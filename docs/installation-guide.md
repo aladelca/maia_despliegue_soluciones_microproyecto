@@ -8,9 +8,14 @@
 
 ## Entorno Python
 
-    uv sync --all-groups
-    uv run dvc pull
+    uv sync --all-groups --locked
     uv run pytest -q
+
+No existe todavía un bucket DVC real. No ejecute `dvc pull` mientras
+`.dvc/config` conserve `s3://replace-with-dvc-bucket/online-shoppers`; use el
+procedimiento local del README para descargar el CSV desde UCI y generar el
+modelo. `dvc pull` se habilita después de aplicar Terraform, configurar el
+bucket resultante y publicar los objetos con `dvc push`.
 
 Los dos notebooks pueden ejecutarse desde la raíz con Jupyter. El entrenamiento genera MLflow SQLite, metadata, métricas y el champion.
 
