@@ -24,7 +24,8 @@ resource "aws_s3_bucket_public_access_block" "dvc" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "dvc" {
-  bucket = aws_s3_bucket.dvc.id
+  bucket     = aws_s3_bucket.dvc.id
+  depends_on = [aws_s3_bucket_versioning.dvc]
   rule {
     id     = "expire-old-noncurrent-versions"
     status = "Enabled"

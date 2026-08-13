@@ -5,6 +5,23 @@ resource "aws_ecr_repository" "api" {
   encryption_configuration { encryption_type = "AES256" }
 }
 
+data "aws_iam_policy_document" "lambda_ecr_retrieval" {
+  statement {
+    sid       = "LambdaECRImageRetrievalPolicy"
+    actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+    resources = [aws_ecr_repository.api.arn]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_ecr_repository_policy" "lambda" {
+  repository = aws_ecr_repository.api.name
+  policy     = data.aws_iam_policy_document.lambda_ecr_retrieval.json
+}
+
 resource "aws_ecr_lifecycle_policy" "api" {
   repository = aws_ecr_repository.api.name
   policy = jsonencode({

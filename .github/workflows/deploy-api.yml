@@ -2,14 +2,6 @@ name: Deploy API
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - "src/**"
-      - "docker/api.Dockerfile"
-      - "requirements-api.txt"
-      - "models/**"
-      - "infra/terraform/service/**"
 
 permissions:
   contents: read
@@ -70,4 +62,6 @@ jobs:
       - name: Smoke test
         run: |
           API_URL=$(terraform -chdir=infra/terraform/service output -raw api_base_url)
-          curl --fail --retry 5 --retry-delay 5 "$API_URL/health"
+          curl --fail --retry 5 --retry-delay 5 \
+            --output "$RUNNER_TEMP/health.json" "$API_URL/health"
+          python -c 'import json, os, pathlib; payload = json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("health.json").read_text()); assert payload.get("status") == "ok", payload'

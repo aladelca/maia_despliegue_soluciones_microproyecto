@@ -48,12 +48,15 @@ data "aws_iam_policy_document" "github_permissions" {
   }
   statement {
     actions = [
+      "ecr:BatchGetImage",
       "ecr:BatchCheckLayerAvailability",
       "ecr:CompleteLayerUpload",
       "ecr:DescribeImages",
+      "ecr:GetRepositoryPolicy",
       "ecr:GetDownloadUrlForLayer",
       "ecr:InitiateLayerUpload",
       "ecr:PutImage",
+      "ecr:SetRepositoryPolicy",
       "ecr:UploadLayerPart",
     ]
     resources = [aws_ecr_repository.api.arn]

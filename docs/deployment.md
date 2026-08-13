@@ -22,6 +22,8 @@ Configure el remoto con docs/dvc-s3.md y ejecute dvc push.
 
 Copie el output `github_deploy_role_arn` al secreto de entorno `AWS_DEPLOY_ROLE_ARN` de GitHub. Configure también las variables `AWS_REGION`, `TERRAFORM_STATE_BUCKET`, `OWNER`, `ALLOWED_ORIGIN` y, si cambia el nombre por defecto, `ECR_REPOSITORY`; configure el secreto `DVC_REMOTE_URL`. El rol confía en el environment `dev` y dispone únicamente de las operaciones necesarias sobre el bucket de estado, ECR y los recursos nombrados del servicio.
 
+El workflow `Deploy API` se ejecuta manualmente desde GitHub Actions. Se mantiene en modo `workflow_dispatch` mientras Phase 6 esté pendiente para impedir despliegues fallidos o creación involuntaria de recursos al fusionar en `main`. Después de configurar y verificar AWS, DVC y el environment `dev`, el equipo puede habilitar un trigger automático protegido.
+
 ## 3. Imagen y service
 
 Construya la imagen para linux/amd64, publique un tag igual al Git SHA y resuelva su digest. service exige una URI con @sha256 y rechaza latest.
