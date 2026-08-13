@@ -16,3 +16,5 @@ La pantalla muestra:
 Si aparece un error, revise los rangos e intente nuevamente. Si persiste, verifique que la API responda en /health.
 
 La salida es una estimación predictiva basada en un dataset académico. No explica causalidad ni debe utilizarse como única base para tomar decisiones sobre personas.
+
+Para integrar otro cliente directamente con FastAPI, consulte la [guía de uso de la API](api-guide.md).
