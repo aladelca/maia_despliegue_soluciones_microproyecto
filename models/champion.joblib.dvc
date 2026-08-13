@@ -1,0 +1,5 @@
+outs:
+- md5: 7df44cd531b2bb54f4555c9c265f8ea1
+  size: 29154982
+  hash: md5
+  path: champion.joblib

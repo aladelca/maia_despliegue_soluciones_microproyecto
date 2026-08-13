@@ -1,0 +1,66 @@
+{
+  "champion": "random_forest__with_page_values",
+  "dataset": {
+    "columns": 18,
+    "duplicate_rows": 125,
+    "positive_count": 1908,
+    "positive_rate": 0.15474452554744525,
+    "rows": 12330
+  },
+  "feature_names": [
+    "Administrative",
+    "Administrative_Duration",
+    "Informational",
+    "Informational_Duration",
+    "ProductRelated",
+    "ProductRelated_Duration",
+    "BounceRates",
+    "ExitRates",
+    "PageValues",
+    "SpecialDay",
+    "Month",
+    "OperatingSystems",
+    "Browser",
+    "Region",
+    "TrafficType",
+    "VisitorType",
+    "Weekend"
+  ],
+  "git_revision": "ebb000d",
+  "include_page_values": true,
+  "model_version": "ebb000d",
+  "schema_version": "1",
+  "selection_metric": "f1",
+  "sha256": "55e1f17d094584a30e2c93879eb679fee58cebabe76b18baadcdcece308d4d3c",
+  "test_metrics": {
+    "brier_score": 0.08683937689952939,
+    "f1": 0.673469387755102,
+    "false_negative": 118,
+    "false_positive": 138,
+    "pr_auc": 0.7196639496497541,
+    "precision": 0.6567164179104478,
+    "recall": 0.6910994764397905,
+    "roc_auc": 0.9275230878998302,
+    "true_negative": 1946,
+    "true_positive": 264
+  },
+  "threshold": 0.6023926908169313,
+  "trained_at": "2026-08-13T02:40:58.548852+00:00",
+  "validation_metrics": {
+    "brier_score": 0.08856033326850907,
+    "f1": 0.6718146718146718,
+    "false_negative": 120,
+    "false_positive": 135,
+    "pr_auc": 0.7163752172405071,
+    "precision": 0.6590909090909091,
+    "recall": 0.6850393700787402,
+    "roc_auc": 0.9246121213265609,
+    "true_negative": 1950,
+    "true_positive": 261
+  },
+  "versions": {
+    "joblib": "1.5.3",
+    "python": "3.12.0",
+    "scikit_learn": "1.9.0"
+  }
+}
