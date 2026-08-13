@@ -117,8 +117,8 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 3. Servir inferencias mediante una API FastAPI con validación estricta.
 4. Crear un tablero Next.js que consuma la API, no que cargue el pickle.
 5. Mostrar visualizaciones descriptivas y métricas predictivas en los notebooks/reporte; en la aplicación basta una visualización mínima del resultado frente a la tasa base.
-6. Containerizar API y frontend.
-7. Desplegar la API y el modelo en AWS y el frontend en Vercel.
+6. Containerizar la API y el modelo; el frontend se construye de forma nativa en Vercel desde GitHub por decisión del proyecto.
+7. Desplegar la API y el modelo en AWS y conectar el frontend de Vercel directamente al repositorio GitHub.
 8. Automatizar infraestructura AWS con Terraform.
 9. Incluir pruebas, documentación y soportes de despliegue.
 
@@ -149,7 +149,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 - Datos versionados en DVC.
 - Modelos y experimentos soportados en MLflow.
 - Modelo empaquetado y desplegado mediante API.
-- Artefactos Docker para frontend, API y modelo.
+- Artefacto Docker para API/modelo. El enunciado original menciona artefactos Docker para el frontend, pero la decisión confirmada del proyecto es desplegar Next.js desde GitHub con el builder nativo de Vercel.
 - Manual de usuario y manual de instalación.
 - Reporte de trabajo en equipo.
 - Video público de síntesis, relevancia, modelos, solución, resultados y conclusiones, con duración máxima de 10 minutos.
@@ -170,7 +170,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
                                |
                          HTTPS /v1/predict
                                |
-                    Next.js container en Vercel
+                  Next.js en Vercel (build desde GitHub)
 
     Notebook de entrenamiento
       |-- dataset y modelo versionados con DVC
@@ -218,7 +218,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 - Runtime de inferencia: Lambda con imagen.
 - Entrenamiento: ejecución bajo demanda desde notebook.
 - Serialización: joblib, que internamente usa pickle; solo se cargan artefactos producidos por el equipo.
-- Despliegue frontend: Vercel mediante Dockerfile.
+- Despliegue frontend: integración nativa GitHub -> Vercel, sin Docker.
 
 ## Scope
 
@@ -228,7 +228,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 - Funciones Python reutilizables llamadas por los notebooks para evitar lógica crítica escondida en celdas.
 - DummyClassifier como baseline, LogisticRegression y RandomForest como candidatos mínimos.
 - Split estratificado train/validation/test con semilla fija.
-- Selección por PR-AUC; reportar además ROC-AUC, precision, recall, F1, matriz de confusión, Brier score y curva de calibración.
+- Selección por F1 en validación; reportar además PR-AUC, ROC-AUC, precision, recall, matriz de confusión, Brier score y curva de calibración.
 - Selección y documentación del umbral de clasificación.
 - Comparación con/sin PageValues.
 - Artefacto único con ColumnTransformer, codificación y clasificador.
@@ -360,7 +360,6 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 | web/pnpm-lock.yaml | create | Dependencias frontend bloqueadas |
 | web/tsconfig.json | create | TypeScript estricto |
 | web/next.config.ts | create | Build standalone y configuración segura |
-| web/Dockerfile.vercel | create | Imagen multi-stage que escucha PORT y ejecuta Next.js standalone |
 | web/src/app/layout.tsx | create | Layout, metadata y estilos |
 | web/src/app/page.tsx | create | Única pantalla: encabezado breve, formulario, resultado y nota de alcance |
 | web/src/components/PredictionForm.tsx | create | Formulario accesible, defaults y errores |
@@ -374,7 +373,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 | Path | Action | Details |
 | --- | --- | --- |
 | docker/api.local.Dockerfile | create | Imagen HTTP local con Uvicorn para probar FastAPI sin emulador Lambda |
-| compose.yaml | create | API local y frontend, healthchecks, puertos y variables |
+| compose.yaml | create | API local en Docker con healthcheck, puerto y variables; el frontend se ejecuta con pnpm |
 
 ### Terraform
 
@@ -409,7 +408,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 
 | Path | Action | Details |
 | --- | --- | --- |
-| .github/workflows/ci.yml | create | Python format/lint/types/tests, frontend lint/types/tests, Docker build y Terraform fmt/validate |
+| .github/workflows/ci.yml | create | Python format/lint/types/tests, frontend lint/types/tests/build, Docker del backend y Terraform fmt/validate |
 | .github/workflows/deploy-api.yml | create | OIDC, dvc pull, buildx Lambda, push ECR por SHA/digest y Terraform service apply |
 | contracts/openapi.json | create | Snapshot generado por FastAPI para documentar y probar el contrato |
 | docs/architecture.md | create | Diagrama, decisiones, seguridad, costos y alternativas |
@@ -429,7 +428,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
   - NEXT_PUBLIC_API_BASE_URL para frontend.
   - MODEL_PATH y MODEL_METADATA_PATH con defaults internos al contenedor.
   - ALLOWED_ORIGIN para CORS.
-  - MLFLOW_TRACKING_URI con default local file:./mlruns.
+  - MLFLOW_TRACKING_URI con default local sqlite:///mlflow.db; MLflow 3.15 mantiene el backend de archivos en modo de mantenimiento.
 - No almacenar AWS_ACCESS_KEY_ID ni AWS_SECRET_ACCESS_KEY en archivos, Terraform, DVC o GitHub.
 - Usar AWS profile/SSO local y GitHub OIDC en CI.
 - Buckets y ECR privados; acceso por mínimo privilegio.
@@ -469,7 +468,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
    - comparar Dummy, LogisticRegression y RandomForest;
    - registrar cada candidato y cada variante con/sin PageValues como run de MLflow;
    - manejar desbalance con class_weight antes de considerar resampling;
-   - elegir champion con validation PR-AUC y criterios de negocio;
+   - elegir champion con F1 de validación y reportar las demás métricas;
    - evaluar test una sola vez;
    - comparar versión completa y sin PageValues;
    - calibrar probabilidades si la curva/Brier lo justifican;
@@ -507,8 +506,8 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 1. Implementar una única ruta / con formulario y cliente tipado en estados vacío, loading, success y error.
 2. Mostrar clase predicha, porcentaje, umbral y una barra CSS que compare la probabilidad con la tasa base; no añadir gráficas ni navegación adicional.
 3. Añadir una nota corta aclarando que el resultado es predictivo y no causal.
-4. Construir y probar web/Dockerfile.vercel localmente.
-5. Desplegar en Vercel y configurar NEXT_PUBLIC_API_BASE_URL.
+4. Validar el build nativo de Next.js con pnpm build.
+5. Conectar el repositorio GitHub en Vercel, elegir web como Root Directory y configurar NEXT_PUBLIC_API_BASE_URL.
 6. Actualizar CORS de API Gateway mediante Terraform con el dominio final.
 
 ### Phase 6 — Integración, reporte y soportes
@@ -522,13 +521,13 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 
 ## Implementation Status
 
-- [ ] Phase 0 — Repositorio, configuración y decisiones documentadas.
-- [ ] Phase 1 — Terraform local, DVC, dataset, EDA y mockup.
-- [ ] Phase 2 — Modelado, MLflow, artefacto champion y métricas.
-- [ ] Phase 3 — FastAPI, contrato OpenAPI y contenedores API.
-- [ ] Phase 4 — Terraform de foundation/service y automatización de despliegue, sin aplicar recursos externos.
-- [ ] Phase 5 — Pantalla única Next.js, pruebas y contenedor Vercel.
-- [ ] Phase 6 — Integración local, documentación, manuales, evidencias y validación completa.
+- [x] Phase 0 — Repositorio, configuración y decisiones documentadas.
+- [x] Phase 1 — Terraform local, DVC, dataset, EDA y mockup. El `dvc push` queda pendiente de crear el bucket externo.
+- [x] Phase 2 — Modelado, MLflow, artefacto champion y métricas.
+- [x] Phase 3 — FastAPI, contrato OpenAPI y contenedores API.
+- [x] Phase 4 — Terraform de foundation/service y automatización de despliegue, sin aplicar recursos externos.
+- [x] Phase 5 — Pantalla única Next.js, pruebas, build nativo y configuración GitHub/Vercel documentada. La conexión del proyecto en Vercel queda pendiente.
+- [ ] Phase 6 — Despliegue externo, evidencias/capturas, reportes de equipo y grabación del video.
 
 ## Tests
 
@@ -583,9 +582,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
   - validación del formulario;
   - loading/error/success;
   - render de clase, probabilidad, umbral y comparación con tasa base.
-- web/e2e/prediction.spec.ts con Playwright:
-  - API mock para CI;
-  - smoke opcional contra URL desplegada.
+- Smoke manual contra la URL desplegada durante Phase 6; se evita añadir Playwright para mantener la única pantalla en el alcance mínimo solicitado.
 - Verificar navegación por teclado, labels, contraste y mensajes de error.
 
 ### Infrastructure
@@ -600,7 +597,7 @@ Una tienda en línea recibe muchas sesiones que no terminan en compra. Se necesi
 
 - Build de docker/api.local.Dockerfile.
 - Build de docker/api.Dockerfile para linux/amd64 con --provenance=false.
-- Build de web/Dockerfile.vercel.
+- Build de Next.js con pnpm, equivalente al que ejecutará Vercel desde GitHub.
 - docker compose config y smoke de health/predict.
 - Smoke HTTPS posterior al despliegue.
 
@@ -640,9 +637,8 @@ Desde la raíz:
 
     docker build -f docker/api.local.Dockerfile -t shoppers-api:local .
     docker buildx build --platform linux/amd64 --provenance=false -f docker/api.Dockerfile -t shoppers-api:lambda .
-    docker build -f web/Dockerfile.vercel -t shoppers-web:local web
     docker compose config
-    docker compose up --build
+    docker compose up --build  # solamente FastAPI
 
 ## Deployment and Rollback
 
@@ -678,11 +674,11 @@ Desde la raíz:
 - Terraform no puede crear Lambda antes de existir la imagen -> separar foundation y service.
 - Terraform bootstrap circular -> bootstrap usa estado local únicamente para crear el bucket; luego los otros roots usan S3.
 - DVC usa claves content-addressed no amigables -> la aplicación no lee el bucket directamente; CI materializa con dvc pull.
-- Dependencia de una característica reciente de Vercel Docker -> validar un hello deployment temprano; si falla, usar despliegue Next.js nativo manteniendo Docker local.
+- Configuración incorrecta de la integración Vercel/GitHub -> usar web como Root Directory, validar Preview temprano y configurar la URL de API por entorno.
 
 ## Open Questions
 
-- Confirmar con el docente si “el despliegue debe hacerse empleando contenedores Docker” exige containerizar y desplegar también el tablero. El plan ya containeriza ambos para cubrir la interpretación estricta.
+- Confirmar con el docente que la interpretación elegida —Docker solo para FastAPI/modelo y frontend nativo desde GitHub en Vercel— satisface la mención de artefactos Docker para el tablero en el enunciado original.
 - Definir con el equipo el costo de error más importante: falso negativo frente a falso positivo. Mientras se define, seleccionar umbral con una regla explícita que garantice recall mínimo y maximice precision.
 - Definir nombre de la cuenta/organización GitHub, región AWS, dominio Vercel y presupuesto antes de terraform apply.
 
@@ -711,8 +707,8 @@ Desde la raíz:
 - POST /v1/predict valida las 17 features y devuelve probabilidad, clase, umbral y versión.
 - La imagen Lambda se almacena en ECR y Terraform crea Lambda/API Gateway/CloudWatch/IAM.
 - La pantalla Next.js desplegada en Vercel consume la API y muestra la predicción, probabilidad, umbral y comparación con la tasa base.
-- API y frontend tienen Dockerfiles funcionales.
-- CI, Ruff, mypy, pytest, frontend checks, Terraform validate y builds Docker quedan en verde.
+- La API/modelo tiene Dockerfiles funcionales para Lambda y desarrollo local; el frontend no usa Docker.
+- CI, Ruff, mypy, pytest, frontend checks, Terraform validate y el build Docker del backend quedan en verde.
 - No hay datasets, modelos binarios, estados Terraform ni credenciales dentro de Git.
 - Existen manual de usuario, manual de instalación y guion de video de menos de 10 minutos.
 
