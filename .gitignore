@@ -1,0 +1,50 @@
+# Course source documents are kept locally but not versioned.
+*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.coverage
+htmlcov/
+
+# Local configuration and credentials
+.env
+.env.local
+.dvc/config.local
+
+# DVC materialized data and model artifacts
+/data/raw/*.csv
+/models/*.joblib
+
+# MLflow local tracking store
+/mlruns/
+/mlflow.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node / Next.js
+/web/node_modules/
+/web/.next/
+/web/coverage/
+/web/playwright-report/
+/web/test-results/
+
+# Terraform local state and caches
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tflock
+*.tfvars
+!*.example.tfvars
+!*.example.tfbackend
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
