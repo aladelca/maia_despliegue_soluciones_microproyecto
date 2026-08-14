@@ -1,0 +1,380 @@
+{
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "model_version"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "MetadataResponse": {
+        "properties": {
+          "champion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Champion"
+          },
+          "feature_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feature Names",
+            "type": "array"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "test_metrics": {
+            "additionalProperties": true,
+            "title": "Test Metrics",
+            "type": "object"
+          },
+          "threshold": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "validation_metrics": {
+            "additionalProperties": true,
+            "title": "Validation Metrics",
+            "type": "object"
+          }
+        },
+        "required": [
+          "model_version",
+          "feature_names",
+          "threshold"
+        ],
+        "title": "MetadataResponse",
+        "type": "object"
+      },
+      "PredictionResponse": {
+        "description": "Versioned inference result.",
+        "properties": {
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "purchase_probability": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Purchase Probability",
+            "type": "number"
+          },
+          "threshold": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "will_purchase": {
+            "title": "Will Purchase",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "will_purchase",
+          "purchase_probability",
+          "threshold",
+          "model_version"
+        ],
+        "title": "PredictionResponse",
+        "type": "object"
+      },
+      "SessionFeatures": {
+        "additionalProperties": false,
+        "description": "The 17 UCI features accepted by the inference endpoint.",
+        "properties": {
+          "Administrative": {
+            "minimum": 0.0,
+            "title": "Administrative",
+            "type": "integer"
+          },
+          "Administrative_Duration": {
+            "minimum": 0.0,
+            "title": "Administrative Duration",
+            "type": "number"
+          },
+          "BounceRates": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bouncerates",
+            "type": "number"
+          },
+          "Browser": {
+            "minimum": 1.0,
+            "title": "Browser",
+            "type": "integer"
+          },
+          "ExitRates": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Exitrates",
+            "type": "number"
+          },
+          "Informational": {
+            "minimum": 0.0,
+            "title": "Informational",
+            "type": "integer"
+          },
+          "Informational_Duration": {
+            "minimum": 0.0,
+            "title": "Informational Duration",
+            "type": "number"
+          },
+          "Month": {
+            "enum": [
+              "Feb",
+              "Mar",
+              "May",
+              "June",
+              "Jul",
+              "Aug",
+              "Sep",
+              "Oct",
+              "Nov",
+              "Dec"
+            ],
+            "title": "Month",
+            "type": "string"
+          },
+          "OperatingSystems": {
+            "minimum": 1.0,
+            "title": "Operatingsystems",
+            "type": "integer"
+          },
+          "PageValues": {
+            "minimum": 0.0,
+            "title": "Pagevalues",
+            "type": "number"
+          },
+          "ProductRelated": {
+            "minimum": 0.0,
+            "title": "Productrelated",
+            "type": "integer"
+          },
+          "ProductRelated_Duration": {
+            "minimum": 0.0,
+            "title": "Productrelated Duration",
+            "type": "number"
+          },
+          "Region": {
+            "minimum": 1.0,
+            "title": "Region",
+            "type": "integer"
+          },
+          "SpecialDay": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Specialday",
+            "type": "number"
+          },
+          "TrafficType": {
+            "minimum": 1.0,
+            "title": "Traffictype",
+            "type": "integer"
+          },
+          "VisitorType": {
+            "enum": [
+              "New_Visitor",
+              "Returning_Visitor",
+              "Other"
+            ],
+            "title": "Visitortype",
+            "type": "string"
+          },
+          "Weekend": {
+            "title": "Weekend",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "Administrative",
+          "Administrative_Duration",
+          "Informational",
+          "Informational_Duration",
+          "ProductRelated",
+          "ProductRelated_Duration",
+          "BounceRates",
+          "ExitRates",
+          "PageValues",
+          "SpecialDay",
+          "Month",
+          "OperatingSystems",
+          "Browser",
+          "Region",
+          "TrafficType",
+          "VisitorType",
+          "Weekend"
+        ],
+        "title": "SessionFeatures",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Online Shoppers Purchase Intention API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/v1/model/metadata": {
+      "get": {
+        "operationId": "metadata_v1_model_metadata_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metadata"
+      }
+    },
+    "/v1/predict": {
+      "post": {
+        "operationId": "predict_v1_predict_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionFeatures"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PredictionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Predict"
+      }
+    }
+  }
+}
