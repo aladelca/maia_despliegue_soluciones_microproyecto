@@ -59,3 +59,25 @@ def test_write_json_is_deterministic(tmp_path: Path) -> None:
 
     assert path.read_text() == '{\n  "a": 2,\n  "z": 1\n}\n'
     assert json.loads(path.read_text()) == {"a": 2, "z": 1}
+
+
+def test_build_eda_summary_keeps_target_counts_consistent() -> None:
+    frame = pd.DataFrame(
+        {
+            "Month": ["Nov", "Nov", "Feb", "Feb"],
+            "VisitorType": [
+                "Returning_Visitor",
+                "New_Visitor",
+                "Returning_Visitor",
+                "New_Visitor",
+            ],
+            "Weekend": [False, True, False, True],
+            "TrafficType": [1, 1, 2, 2],
+            "Revenue": [True, False, True, False],
+        }
+    )
+
+    summary = build_eda_summary(frame)
+
+    assert summary["positive_count"] <= summary["rows"]
+    assert summary["positive_rate"] == summary["positive_count"] / summary["rows"]
