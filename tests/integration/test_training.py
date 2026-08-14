@@ -71,4 +71,15 @@ def test_train_champion_tracks_candidates_and_writes_loadable_artifact(tmp_path:
     assert metrics_path.exists()
     assert np.all((probabilities >= 0) & (probabilities <= 1))
     assert len(runs) == 7
+
+    run_names = {run.data.tags.get("mlflow.runName") for run in runs}
+
+    assert "logistic_regression__with_page_values" in run_names
+    assert "logistic_regression__without_page_values" in run_names
+    assert "random_forest__with_page_values" in run_names
+    assert "random_forest__without_page_values" in run_names
+    assert "dummy__with_page_values" in run_names
+    assert "dummy__without_page_values" in run_names
+    assert "champion" in run_names
+
     assert set(bundle.feature_names).issubset(FEATURE_COLUMNS)
