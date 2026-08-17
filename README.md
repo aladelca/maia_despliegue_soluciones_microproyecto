@@ -11,6 +11,173 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 - API Gateway expone HTTPS; Next.js se despliega en Vercel.
 - Terraform declara y administra los recursos AWS del proyecto.
 
+## Ejecución en AWS
+
+### Requisitos de nube
+
+- AWS CLI autenticado con credenciales temporales.
+- Terraform 1.15.8.
+- Docker con `buildx` para publicar la imagen Lambda en ECR.
+- Python 3.12 y `uv` para recuperar y validar el modelo antes del build.
+- Para el despliegue completo: permisos sobre ECR, IAM, Lambda, API Gateway,
+  CloudWatch y el backend S3 de Terraform.
+
+Nunca incluya access keys en Git ni en `.dvc/config`. Si las credenciales
+temporales están en el `.env` local ignorado por Git, cárguelas y compruebe la
+identidad antes de ejecutar Terraform o DVC:
+
+    set -a
+    source .env
+    set +a
+    aws sts get-caller-identity
+    aws configure get region
+
+La sesión AWS Academy usada para este proyecto debe mostrar la cuenta
+`712986489191` y un ARN `assumed-role/voclabs/...`.
+
+### 1. Recuperar datos y modelo desde S3
+
+Desde la raíz del repositorio:
+
+    uv sync --all-groups --locked
+    uv run dvc remote list
+    uv run dvc pull
+    uv run dvc status -c
+    test -f data/raw/online_shoppers_intention.csv
+    test -f models/champion.joblib
+
+El remoto esperado es:
+
+    s3://maia-online-shoppers-dvc-712986489191-us-east-1/online-shoppers
+
+### 2. Verificar o reaplicar DVC/S3 en `voclabs`
+
+El laboratorio permite administrar S3, pero no crear IAM u OIDC. Por eso se
+aplica `foundation` con `enable_deployment_resources=false`:
+
+    terraform -chdir=infra/terraform/foundation init -reconfigure \
+      -backend-config='bucket=maia-online-shoppers-tfstate-712986489191-us-east-1' \
+      -backend-config='key=online-shoppers/dev/foundation.tfstate' \
+      -backend-config='region=us-east-1' \
+      -backend-config='use_lockfile=true' \
+      -backend-config='encrypt=true'
+
+    terraform -chdir=infra/terraform/foundation plan \
+      -var='owner=adrian-alarcon' \
+      -var='dvc_bucket_name=maia-online-shoppers-dvc-712986489191-us-east-1' \
+      -var='terraform_state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1' \
+      -var='github_owner=aladelca' \
+      -var='github_repository=maia_despliegue_soluciones_microproyecto' \
+      -var='enable_deployment_resources=false' \
+      -out=/tmp/online-shoppers-foundation.tfplan
+
+Revise que el plan no destruya recursos. Para aplicar exactamente el plan
+guardado:
+
+    terraform -chdir=infra/terraform/foundation apply \
+      /tmp/online-shoppers-foundation.tfplan
+
+Después de publicar una nueva versión del dataset o modelo:
+
+    uv run dvc add data/raw/online_shoppers_intention.csv
+    uv run dvc add models/champion.joblib
+    uv run dvc push
+    uv run dvc status -c
+
+### 3. Desplegar la API completa en AWS
+
+Este paso no funciona con el rol `voclabs`, porque el stack necesita crear IAM
+y OIDC. Ejecútelo en una cuenta o rol autorizado que también pueda leer el
+bucket DVC; lo más simple es mantener S3, ECR, Lambda y Terraform en la misma
+cuenta.
+
+Primero copie el archivo de variables, sustituya todos sus valores
+`replace-*` y aplique `foundation` con los recursos de despliegue habilitados:
+
+    CLOUD_AWS_REGION=us-east-1
+    cp infra/terraform/environments/dev/foundation.example.tfvars \
+      infra/terraform/environments/dev/foundation.tfvars
+
+    terraform -chdir=infra/terraform/foundation init -reconfigure \
+      -backend-config='bucket=<terraform-state-bucket>' \
+      -backend-config='key=online-shoppers/dev/foundation.tfstate' \
+      -backend-config="region=$CLOUD_AWS_REGION" \
+      -backend-config='use_lockfile=true' \
+      -backend-config='encrypt=true'
+
+    terraform -chdir=infra/terraform/foundation plan \
+      -var-file=../environments/dev/foundation.tfvars \
+      -var='enable_deployment_resources=true' \
+      -out=/tmp/online-shoppers-cloud-foundation.tfplan
+
+    terraform -chdir=infra/terraform/foundation apply \
+      /tmp/online-shoppers-cloud-foundation.tfplan
+
+Recupere el modelo, construya la imagen para Lambda y publíquela con un tag
+inmutable igual al commit Git:
+
+    uv run dvc pull models/champion.joblib.dvc
+    uv run pytest -q tests/integration/test_model_smoke.py tests/integration/api
+
+    ECR_REPOSITORY_URL=$(terraform -chdir=infra/terraform/foundation output -raw ecr_repository_url)
+    ECR_REGISTRY=${ECR_REPOSITORY_URL%%/*}
+    ECR_REPOSITORY_NAME=${ECR_REPOSITORY_URL##*/}
+    IMAGE_TAG=$(git rev-parse HEAD)
+
+    aws ecr get-login-password --region "$CLOUD_AWS_REGION" | \
+      docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+    docker buildx build \
+      --platform linux/amd64 \
+      --provenance=false \
+      -f docker/api.Dockerfile \
+      -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" \
+      --push .
+
+Resuelva el digest publicado; Terraform rechaza tags mutables:
+
+    IMAGE_DIGEST=$(aws ecr describe-images \
+      --region "$CLOUD_AWS_REGION" \
+      --repository-name "$ECR_REPOSITORY_NAME" \
+      --image-ids imageTag="$IMAGE_TAG" \
+      --query 'imageDetails[0].imageDigest' \
+      --output text)
+    IMAGE_URI="$ECR_REPOSITORY_URL@$IMAGE_DIGEST"
+
+Inicialice y aplique el servicio:
+
+    terraform -chdir=infra/terraform/service init -reconfigure \
+      -backend-config='bucket=<terraform-state-bucket>' \
+      -backend-config='key=online-shoppers/dev/service.tfstate' \
+      -backend-config="region=$CLOUD_AWS_REGION" \
+      -backend-config='use_lockfile=true' \
+      -backend-config='encrypt=true'
+
+    terraform -chdir=infra/terraform/service plan \
+      -var="aws_region=$CLOUD_AWS_REGION" \
+      -var='owner=<owner>' \
+      -var="image_uri=$IMAGE_URI" \
+      -var='allowed_origin=https://<frontend-domain>' \
+      -out=/tmp/online-shoppers-service.tfplan
+
+    terraform -chdir=infra/terraform/service apply \
+      /tmp/online-shoppers-service.tfplan
+
+Compruebe que Lambda cargó el modelo incluido en la imagen:
+
+    API_URL=$(terraform -chdir=infra/terraform/service output -raw api_base_url)
+    curl --fail --retry 5 --retry-delay 5 "$API_URL/health"
+    curl --fail "$API_URL/v1/model/metadata"
+
+El mismo proceso está automatizado en `.github/workflows/deploy-api.yml`. Una
+vez configurados el environment `dev`, el secreto `AWS_DEPLOY_ROLE_ARN` y las
+variables descritas en [la guía de despliegue](docs/deployment.md), ejecútelo
+desde GitHub CLI:
+
+    gh workflow run deploy-api.yml --ref main
+    gh run list --workflow deploy-api.yml --limit 5
+    gh run watch <run-id> --exit-status
+
 ## Inicio local
 
 > [!IMPORTANT]
