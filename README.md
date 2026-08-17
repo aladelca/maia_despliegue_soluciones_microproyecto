@@ -11,32 +11,28 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 - API Gateway expone HTTPS; Next.js se despliega en Vercel.
 - Terraform declara y administra los recursos AWS del proyecto.
 
-## Ejecución en AWS
+## Ejecución en AWS desde cero
 
-### Requisitos de nube
+Esta ruta crea o recupera la infraestructura con Terraform y delega a GitHub
+Actions la descarga DVC, las pruebas, el build Docker, el push a ECR y la
+actualización de Lambda. No requiere EC2 ni Docker local. Se asume que los
+objetos señalados por los archivos `.dvc` ya existen en el remoto S3; más abajo
+se valida esa precondición sin descargarlos al equipo.
 
-- AWS CLI autenticado con credenciales temporales.
-- Terraform 1.15.8.
-- GitHub Actions habilitado para construir con Docker, recuperar DVC y aplicar
-  Terraform sin usar la máquina local.
-- En `voclabs`: acceso a ECR, Lambda, API Gateway, CloudWatch, S3 y permiso para
-  pasar el `LabRole` existente a Lambda. No se necesita crear IAM.
+### 1. Instalar herramientas
 
-#### Instalar Terraform en macOS
+Se necesita Git, AWS CLI, Terraform y, para controlar Actions desde terminal,
+GitHub CLI. En macOS con Homebrew:
 
-La opción recomendada por HashiCorp es instalar Terraform desde su tap oficial
-de Homebrew:
-
+    brew install awscli gh
     brew tap hashicorp/tap
     brew install hashicorp/tap/terraform
+    aws --version
     terraform version
+    gh --version
 
-Si Terraform ya estaba instalado desde ese tap, actualícelo con
-`brew upgrade hashicorp/tap/terraform`. El proyecto requiere Terraform 1.10 o
-superior y CI utiliza la versión 1.15.8.
-
-Para usar exactamente la misma versión que CI sin depender de Homebrew,
-descargue el binario oficial y valide su checksum. En un Mac con Apple Silicon:
+El proyecto requiere Terraform 1.10 o superior y CI usa 1.15.8. Para instalar
+exactamente esa versión en un Mac Apple Silicon sin Homebrew:
 
     TERRAFORM_VERSION=1.15.8
     TERRAFORM_PACKAGE="terraform_${TERRAFORM_VERSION}_darwin_arm64.zip"
@@ -55,55 +51,71 @@ descargue el binario oficial y valide su checksum. En un Mac con Apple Silicon:
       /usr/local/bin/terraform
     terraform version
 
-En un Mac Intel, sustituya `darwin_arm64` por `darwin_amd64`. Consulte la
+En un Mac Intel, cambie `darwin_arm64` por `darwin_amd64`. Consulte la
 [instalación oficial de Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
-y la [verificación oficial del archivo](https://developer.hashicorp.com/terraform/tutorials/cli/verify-archive)
-para más detalles.
+y la [verificación oficial del archivo](https://developer.hashicorp.com/terraform/tutorials/cli/verify-archive).
 
-Nunca incluya access keys en Git ni en `.dvc/config`. Si las credenciales
-temporales están en el `.env` local ignorado por Git, cárguelas y compruebe la
-identidad antes de ejecutar Terraform o DVC:
+### 2. Preparar `.env` y autenticar AWS
+
+Desde la raíz de un clon nuevo:
+
+    cp .env.example .env
+    chmod 600 .env
+
+Agregue al `.env` los valores temporales entregados por AWS Academy con estos
+nombres: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
+`AWS_REGION` y `AWS_DEFAULT_REGION`. No los agregue a `.env.example`, Terraform,
+DVC ni Git. Después cargue y valide todo:
 
     set -a
     source .env
     set +a
-    aws sts get-caller-identity
-    aws configure get region
-
-La sesión AWS Academy usada para este proyecto debe mostrar la cuenta
-`712986489191` y un ARN `assumed-role/voclabs/...`.
-
-El `.env` ignorado por Git ya contiene la configuración no secreta del entorno
-de laboratorio. Valide que ninguna variable requerida esté vacía; esto evita
-enviar marcadores como `<terraform-state-bucket>` a AWS:
-
     : "${TF_STATE_BUCKET:?Falta TF_STATE_BUCKET en .env}"
     : "${TF_FOUNDATION_STATE_KEY:?Falta TF_FOUNDATION_STATE_KEY en .env}"
     : "${TF_SERVICE_STATE_KEY:?Falta TF_SERVICE_STATE_KEY en .env}"
     : "${DVC_S3_BUCKET:?Falta DVC_S3_BUCKET en .env}"
+    : "${DVC_S3_PREFIX:?Falta DVC_S3_PREFIX en .env}"
     : "${CLOUD_AWS_REGION:?Falta CLOUD_AWS_REGION en .env}"
     : "${CLOUD_OWNER:?Falta CLOUD_OWNER en .env}"
     : "${LAB_ROLE_ARN:?Falta LAB_ROLE_ARN en .env}"
+    aws sts get-caller-identity
+    aws iam get-role --role-name LabRole --query 'Role.Arn' --output text
 
-### 1. Recuperar datos y modelo desde S3
+La identidad debe pertenecer a la cuenta `712986489191` y mostrar un ARN
+`assumed-role/voclabs/...`.
 
-Desde la raíz del repositorio:
+### 3. Crear o recuperar el backend Terraform
 
-    uv sync --all-groups --locked
-    uv run dvc remote list
-    uv run dvc pull
-    uv run dvc status -c
-    test -f data/raw/online_shoppers_intention.csv
-    test -f models/champion.joblib
+`bootstrap` usa estado local porque crea el bucket que servirá de backend. En
+un clon nuevo, recupere primero la copia versionada si ya existe:
 
-El remoto esperado es:
+    if test ! -f infra/terraform/bootstrap/terraform.tfstate && \
+      aws s3api head-object \
+        --bucket "$TF_STATE_BUCKET" \
+        --key online-shoppers/dev/bootstrap.tfstate >/dev/null 2>&1; then
+      aws s3 cp \
+        "s3://$TF_STATE_BUCKET/online-shoppers/dev/bootstrap.tfstate" \
+        infra/terraform/bootstrap/terraform.tfstate
+    fi
 
-    s3://maia-online-shoppers-dvc-712986489191-us-east-1/online-shoppers
+Inicialice, revise y aplique. El plan debe crear el bucket en una cuenta nueva
+o indicar `No changes` cuando se recuperó el estado existente:
 
-### 2. Verificar o reaplicar foundation en `voclabs`
+    terraform -chdir=infra/terraform/bootstrap init
+    terraform -chdir=infra/terraform/bootstrap plan \
+      -var="aws_region=$CLOUD_AWS_REGION" \
+      -var="owner=$CLOUD_OWNER" \
+      -var="state_bucket_name=$TF_STATE_BUCKET" \
+      -out=/tmp/online-shoppers-bootstrap.tfplan
+    terraform -chdir=infra/terraform/bootstrap apply \
+      /tmp/online-shoppers-bootstrap.tfplan
+    aws s3 cp infra/terraform/bootstrap/terraform.tfstate \
+      "s3://$TF_STATE_BUCKET/online-shoppers/dev/bootstrap.tfstate"
 
-El laboratorio permite administrar S3 y ECR, pero no crear IAM u OIDC. Por eso
-se habilita ECR y se deshabilitan únicamente los recursos GitHub IAM/OIDC:
+### 4. Crear o recuperar DVC y ECR
+
+El laboratorio permite S3 y ECR, pero no crear IAM/OIDC. Por eso se crea ECR y
+se deshabilitan solamente los recursos OIDC de GitHub:
 
     terraform -chdir=infra/terraform/foundation init -reconfigure \
       -backend-config="bucket=$TF_STATE_BUCKET" \
@@ -111,7 +123,6 @@ se habilita ECR y se deshabilitan únicamente los recursos GitHub IAM/OIDC:
       -backend-config="region=$CLOUD_AWS_REGION" \
       -backend-config='use_lockfile=true' \
       -backend-config='encrypt=true'
-
     terraform -chdir=infra/terraform/foundation plan \
       -var="owner=$CLOUD_OWNER" \
       -var="dvc_bucket_name=$DVC_S3_BUCKET" \
@@ -121,54 +132,83 @@ se habilita ECR y se deshabilitan únicamente los recursos GitHub IAM/OIDC:
       -var='enable_deployment_resources=true' \
       -var='enable_github_oidc_resources=false' \
       -out=/tmp/online-shoppers-foundation.tfplan
-
-Revise que el plan no destruya recursos. Para aplicar exactamente el plan
-guardado:
-
     terraform -chdir=infra/terraform/foundation apply \
       /tmp/online-shoppers-foundation.tfplan
+    terraform -chdir=infra/terraform/foundation output
 
-Después de publicar una nueva versión del dataset o modelo:
+### 5. Verificar los objetos DVC sin descargarlos
 
-    uv run dvc add data/raw/online_shoppers_intention.csv
-    uv run dvc add models/champion.joblib
-    uv run dvc push
-    uv run dvc status -c
+Construya las keys content-addressed a partir de los punteros versionados y
+confirme que S3 contiene ambos artefactos:
 
-### 3. Actualizar la API con GitHub Actions
+    MODEL_HASH=$(awk '$2 == "md5:" { print $3 }' models/champion.joblib.dvc)
+    DATA_HASH=$(awk '$2 == "md5:" { print $3 }' \
+      data/raw/online_shoppers_intention.csv.dvc)
+    test -n "$MODEL_HASH" && test -n "$DATA_HASH"
+    MODEL_KEY="$DVC_S3_PREFIX/files/md5/$(printf %s "$MODEL_HASH" | cut -c1-2)/$(printf %s "$MODEL_HASH" | cut -c3-)"
+    DATA_KEY="$DVC_S3_PREFIX/files/md5/$(printf %s "$DATA_HASH" | cut -c1-2)/$(printf %s "$DATA_HASH" | cut -c3-)"
+    aws s3api head-object --bucket "$DVC_S3_BUCKET" --key "$MODEL_KEY"
+    aws s3api head-object --bucket "$DVC_S3_BUCKET" --key "$DATA_KEY"
 
-No se necesita EC2 ni Docker local. El workflow `Deploy API` se ejecuta en un
-runner hospedado por GitHub y realiza todo el proceso: obtiene el modelo desde
-DVC/S3, ejecuta pruebas, construye `linux/amd64`, publica el commit en ECR,
-resuelve su digest, actualiza Lambda mediante Terraform y prueba `/health`.
+Si alguno no existe, el workflow se detendrá en `dvc pull`. Un responsable que
+tenga los artefactos materializados debe ejecutar `uv run dvc push` antes de
+continuar.
 
-Para `voclabs`, configure estos repository secrets; nunca copie sus valores al
-workflow ni al repositorio:
+### 6. Configurar GitHub
 
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_SESSION_TOKEN`
+Autentique GitHub CLI y guarde las credenciales AWS temporales como repository
+secrets. Los comandos solicitan el valor de forma interactiva y no deben recibir
+valores en la línea de comandos:
 
-Configure también estas repository variables no secretas:
+    gh auth login
+    gh secret set AWS_ACCESS_KEY_ID
+    gh secret set AWS_SECRET_ACCESS_KEY
+    gh secret set AWS_SESSION_TOKEN
 
-- `AWS_REGION=us-east-1`
-- `TERRAFORM_STATE_BUCKET=maia-online-shoppers-tfstate-712986489191-us-east-1`
-- `OWNER=adrian-alarcon`
-- `ALLOWED_ORIGIN=http://localhost:3000` o el origen real del frontend
-- `LAMBDA_EXECUTION_ROLE_ARN=arn:aws:iam::712986489191:role/LabRole`
+Configure las variables no secretas requeridas:
 
-El workflow valida que las credenciales pertenezcan a la cuenta
-`712986489191`, reutiliza `LabRole` y no crea IAM/OIDC. Ejecútelo sobre la rama
-que contiene el cambio:
+    gh variable set AWS_REGION --body us-east-1
+    gh variable set TERRAFORM_STATE_BUCKET \
+      --body maia-online-shoppers-tfstate-712986489191-us-east-1
+    gh variable set OWNER --body adrian-alarcon
+    gh variable set ALLOWED_ORIGIN --body http://localhost:3000
+    gh variable set LAMBDA_EXECUTION_ROLE_ARN \
+      --body arn:aws:iam::712986489191:role/LabRole
+    gh secret list
+    gh variable list
 
-    gh workflow run deploy-api.yml \
-      --ref feature/implement-dvc-remote-on-amazon-s3
-    gh run list --workflow deploy-api.yml --limit 5
-    gh run watch <run-id> --exit-status
+Use como `ALLOWED_ORIGIN` el dominio real del frontend cuando esté disponible.
+El workflow valida la cuenta AWS esperada y reutiliza `LabRole`; nunca crea ni
+modifica IAM.
 
-Las credenciales de AWS Academy expiran. Cuando se renueve la sesión del
-laboratorio, actualice los tres repository secrets antes de volver a ejecutar
-el workflow. En una cuenta permanente, use OIDC en lugar de access keys.
+### 7. Desplegar Lambda y API Gateway
+
+El workflow realiza `dvc pull`, pruebas, build `linux/amd64`, push a ECR,
+resolución del digest, `terraform apply` y smoke test. Desde `main`:
+
+    gh workflow run deploy-api.yml --ref main
+    RUN_ID=$(gh run list --workflow deploy-api.yml --limit 1 \
+      --json databaseId --jq '.[0].databaseId')
+    gh run watch "$RUN_ID" --exit-status
+
+Una ejecución repetida del mismo commit reutiliza la imagen inmutable existente
+en ECR. Para comprobar la API sin leer el estado Terraform local:
+
+    API_URL=$(aws apigatewayv2 get-apis \
+      --region "$CLOUD_AWS_REGION" \
+      --query "Items[?Name=='online-shoppers-ml-dev'].ApiEndpoint | [0]" \
+      --output text)
+    test -n "$API_URL" && test "$API_URL" != None
+    curl --fail --retry 5 --retry-delay 5 "$API_URL/health"
+    curl --fail "$API_URL/v1/model/metadata"
+
+### Actualizaciones posteriores
+
+Para un cambio de código o de modelo, publique el commit —incluido el puntero
+`.dvc` actualizado cuando corresponda— y vuelva a ejecutar el paso 7. Terraform
+actualiza `image_uri` en la Lambda existente; no recrea API Gateway. Cuando
+expire o se reinicie AWS Academy, renueve los tres repository secrets antes de
+lanzar el workflow. En una cuenta permanente se recomienda OIDC.
 
 ## Inicio local
 
