@@ -8,7 +8,9 @@ El remoto compartido está versionado en `.dvc/config` y no contiene credenciale
 
     uv run dvc remote list
 
-No escriba access keys en .dvc/config. Use AWS SSO/perfiles localmente y OIDC en GitHub Actions.
+No escriba access keys en `.dvc/config`. Use AWS SSO/perfiles localmente. En
+GitHub Actions, prefiera OIDC para cuentas permanentes; `voclabs` usa los tres
+repository secrets temporales documentados en el README.
 
 Antes de operar contra el remoto, valide la cuenta y la región esperadas:
 

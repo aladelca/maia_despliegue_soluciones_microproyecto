@@ -17,10 +17,10 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 
 - AWS CLI autenticado con credenciales temporales.
 - Terraform 1.15.8.
-- Docker con `buildx` para publicar la imagen Lambda en ECR.
-- Python 3.12 y `uv` para recuperar y validar el modelo antes del build.
-- Para el despliegue completo: permisos sobre ECR, IAM, Lambda, API Gateway,
-  CloudWatch y el backend S3 de Terraform.
+- GitHub Actions habilitado para construir con Docker, recuperar DVC y aplicar
+  Terraform sin usar la máquina local.
+- En `voclabs`: acceso a ECR, Lambda, API Gateway, CloudWatch, S3 y permiso para
+  pasar el `LabRole` existente a Lambda. No se necesita crear IAM.
 
 #### Instalar Terraform en macOS
 
@@ -73,6 +73,18 @@ identidad antes de ejecutar Terraform o DVC:
 La sesión AWS Academy usada para este proyecto debe mostrar la cuenta
 `712986489191` y un ARN `assumed-role/voclabs/...`.
 
+El `.env` ignorado por Git ya contiene la configuración no secreta del entorno
+de laboratorio. Valide que ninguna variable requerida esté vacía; esto evita
+enviar marcadores como `<terraform-state-bucket>` a AWS:
+
+    : "${TF_STATE_BUCKET:?Falta TF_STATE_BUCKET en .env}"
+    : "${TF_FOUNDATION_STATE_KEY:?Falta TF_FOUNDATION_STATE_KEY en .env}"
+    : "${TF_SERVICE_STATE_KEY:?Falta TF_SERVICE_STATE_KEY en .env}"
+    : "${DVC_S3_BUCKET:?Falta DVC_S3_BUCKET en .env}"
+    : "${CLOUD_AWS_REGION:?Falta CLOUD_AWS_REGION en .env}"
+    : "${CLOUD_OWNER:?Falta CLOUD_OWNER en .env}"
+    : "${LAB_ROLE_ARN:?Falta LAB_ROLE_ARN en .env}"
+
 ### 1. Recuperar datos y modelo desde S3
 
 Desde la raíz del repositorio:
@@ -88,25 +100,26 @@ El remoto esperado es:
 
     s3://maia-online-shoppers-dvc-712986489191-us-east-1/online-shoppers
 
-### 2. Verificar o reaplicar DVC/S3 en `voclabs`
+### 2. Verificar o reaplicar foundation en `voclabs`
 
-El laboratorio permite administrar S3, pero no crear IAM u OIDC. Por eso se
-aplica `foundation` con `enable_deployment_resources=false`:
+El laboratorio permite administrar S3 y ECR, pero no crear IAM u OIDC. Por eso
+se habilita ECR y se deshabilitan únicamente los recursos GitHub IAM/OIDC:
 
     terraform -chdir=infra/terraform/foundation init -reconfigure \
-      -backend-config='bucket=maia-online-shoppers-tfstate-712986489191-us-east-1' \
-      -backend-config='key=online-shoppers/dev/foundation.tfstate' \
-      -backend-config='region=us-east-1' \
+      -backend-config="bucket=$TF_STATE_BUCKET" \
+      -backend-config="key=$TF_FOUNDATION_STATE_KEY" \
+      -backend-config="region=$CLOUD_AWS_REGION" \
       -backend-config='use_lockfile=true' \
       -backend-config='encrypt=true'
 
     terraform -chdir=infra/terraform/foundation plan \
-      -var='owner=adrian-alarcon' \
-      -var='dvc_bucket_name=maia-online-shoppers-dvc-712986489191-us-east-1' \
-      -var='terraform_state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1' \
+      -var="owner=$CLOUD_OWNER" \
+      -var="dvc_bucket_name=$DVC_S3_BUCKET" \
+      -var="terraform_state_bucket_name=$TF_STATE_BUCKET" \
       -var='github_owner=aladelca' \
       -var='github_repository=maia_despliegue_soluciones_microproyecto' \
-      -var='enable_deployment_resources=false' \
+      -var='enable_deployment_resources=true' \
+      -var='enable_github_oidc_resources=false' \
       -out=/tmp/online-shoppers-foundation.tfplan
 
 Revise que el plan no destruya recursos. Para aplicar exactamente el plan
@@ -122,117 +135,40 @@ Después de publicar una nueva versión del dataset o modelo:
     uv run dvc push
     uv run dvc status -c
 
-### 3. Desplegar la API completa en AWS
+### 3. Actualizar la API con GitHub Actions
 
-Este paso no funciona con el rol `voclabs`, porque el stack necesita crear IAM
-y OIDC. Ejecútelo en una cuenta o rol autorizado que también pueda leer el
-bucket DVC; lo más simple es mantener S3, ECR, Lambda y Terraform en la misma
-cuenta.
+No se necesita EC2 ni Docker local. El workflow `Deploy API` se ejecuta en un
+runner hospedado por GitHub y realiza todo el proceso: obtiene el modelo desde
+DVC/S3, ejecuta pruebas, construye `linux/amd64`, publica el commit en ECR,
+resuelve su digest, actualiza Lambda mediante Terraform y prueba `/health`.
 
-Antes de cambiar de cuenta, complete el paso 1 para conservar una copia local
-del dataset y el modelo. En la cuenta definitiva, cree primero el bucket de
-estado con el paso 1 de [la guía de despliegue](docs/deployment.md) y sustituya
-todos los valores `replace-*` y `<...>` de los siguientes comandos.
+Para `voclabs`, configure estos repository secrets; nunca copie sus valores al
+workflow ni al repositorio:
 
-Después copie el archivo de variables y aplique `foundation` con los recursos
-de despliegue habilitados:
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_SESSION_TOKEN`
 
-    CLOUD_AWS_REGION=us-east-1
-    test -f infra/terraform/environments/dev/foundation.tfvars || \
-      cp infra/terraform/environments/dev/foundation.example.tfvars \
-        infra/terraform/environments/dev/foundation.tfvars
+Configure también estas repository variables no secretas:
 
-    terraform -chdir=infra/terraform/foundation init -reconfigure \
-      -backend-config='bucket=<terraform-state-bucket>' \
-      -backend-config='key=online-shoppers/dev/foundation.tfstate' \
-      -backend-config="region=$CLOUD_AWS_REGION" \
-      -backend-config='use_lockfile=true' \
-      -backend-config='encrypt=true'
+- `AWS_REGION=us-east-1`
+- `TERRAFORM_STATE_BUCKET=maia-online-shoppers-tfstate-712986489191-us-east-1`
+- `OWNER=adrian-alarcon`
+- `ALLOWED_ORIGIN=http://localhost:3000` o el origen real del frontend
+- `LAMBDA_EXECUTION_ROLE_ARN=arn:aws:iam::712986489191:role/LabRole`
 
-    terraform -chdir=infra/terraform/foundation plan \
-      -var-file=../environments/dev/foundation.tfvars \
-      -var='enable_deployment_resources=true' \
-      -out=/tmp/online-shoppers-cloud-foundation.tfplan
+El workflow valida que las credenciales pertenezcan a la cuenta
+`712986489191`, reutiliza `LabRole` y no crea IAM/OIDC. Ejecútelo sobre la rama
+que contiene el cambio:
 
-    terraform -chdir=infra/terraform/foundation apply \
-      /tmp/online-shoppers-cloud-foundation.tfplan
-
-Si la cuenta definitiva usa otro bucket DVC, actualice la configuración
-versionada y publique los artefactos materializados antes del build:
-
-    CLOUD_DVC_BUCKET=$(terraform -chdir=infra/terraform/foundation output -raw dvc_bucket_name)
-    uv run dvc remote modify aws-s3 url \
-      "s3://$CLOUD_DVC_BUCKET/online-shoppers"
-    uv run dvc push
-    uv run dvc status -c
-
-Incluya el cambio resultante de `.dvc/config` en el mismo commit que cambia de
-cuenta o entorno.
-
-Recupere el modelo, construya la imagen para Lambda y publíquela con un tag
-inmutable igual al commit Git:
-
-    uv run dvc pull models/champion.joblib.dvc
-    uv run pytest -q tests/integration/test_model_smoke.py tests/integration/api
-
-    ECR_REPOSITORY_URL=$(terraform -chdir=infra/terraform/foundation output -raw ecr_repository_url)
-    ECR_REGISTRY=${ECR_REPOSITORY_URL%%/*}
-    ECR_REPOSITORY_NAME=${ECR_REPOSITORY_URL##*/}
-    IMAGE_TAG=$(git rev-parse HEAD)
-
-    aws ecr get-login-password --region "$CLOUD_AWS_REGION" | \
-      docker login --username AWS --password-stdin "$ECR_REGISTRY"
-
-    docker buildx build \
-      --platform linux/amd64 \
-      --provenance=false \
-      -f docker/api.Dockerfile \
-      -t "$ECR_REPOSITORY_URL:$IMAGE_TAG" \
-      --push .
-
-Resuelva el digest publicado; Terraform rechaza tags mutables:
-
-    IMAGE_DIGEST=$(aws ecr describe-images \
-      --region "$CLOUD_AWS_REGION" \
-      --repository-name "$ECR_REPOSITORY_NAME" \
-      --image-ids imageTag="$IMAGE_TAG" \
-      --query 'imageDetails[0].imageDigest' \
-      --output text)
-    IMAGE_URI="$ECR_REPOSITORY_URL@$IMAGE_DIGEST"
-
-Inicialice y aplique el servicio:
-
-    terraform -chdir=infra/terraform/service init -reconfigure \
-      -backend-config='bucket=<terraform-state-bucket>' \
-      -backend-config='key=online-shoppers/dev/service.tfstate' \
-      -backend-config="region=$CLOUD_AWS_REGION" \
-      -backend-config='use_lockfile=true' \
-      -backend-config='encrypt=true'
-
-    terraform -chdir=infra/terraform/service plan \
-      -var="aws_region=$CLOUD_AWS_REGION" \
-      -var='owner=<owner>' \
-      -var="image_uri=$IMAGE_URI" \
-      -var='allowed_origin=https://<frontend-domain>' \
-      -out=/tmp/online-shoppers-service.tfplan
-
-    terraform -chdir=infra/terraform/service apply \
-      /tmp/online-shoppers-service.tfplan
-
-Compruebe que Lambda cargó el modelo incluido en la imagen:
-
-    API_URL=$(terraform -chdir=infra/terraform/service output -raw api_base_url)
-    curl --fail --retry 5 --retry-delay 5 "$API_URL/health"
-    curl --fail "$API_URL/v1/model/metadata"
-
-El mismo proceso está automatizado en `.github/workflows/deploy-api.yml`. Una
-vez configurados el environment `dev`, el secreto `AWS_DEPLOY_ROLE_ARN` y las
-variables descritas en [la guía de despliegue](docs/deployment.md), ejecútelo
-desde GitHub CLI:
-
-    gh workflow run deploy-api.yml --ref main
+    gh workflow run deploy-api.yml \
+      --ref feature/implement-dvc-remote-on-amazon-s3
     gh run list --workflow deploy-api.yml --limit 5
     gh run watch <run-id> --exit-status
+
+Las credenciales de AWS Academy expiran. Cuando se renueve la sesión del
+laboratorio, actualice los tres repository secrets antes de volver a ejecutar
+el workflow. En una cuenta permanente, use OIDC en lugar de access keys.
 
 ## Inicio local
 

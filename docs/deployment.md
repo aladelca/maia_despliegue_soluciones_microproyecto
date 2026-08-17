@@ -26,46 +26,48 @@ El workflow `Deploy API` se ejecuta manualmente desde GitHub Actions. Se mantien
 
 ### Variante para AWS Academy `voclabs`
 
-El rol temporal del laboratorio puede administrar S3, pero no crear los recursos IAM/OIDC del despliegue. Use un bucket de estado dedicado y desactive esos recursos al aplicar `foundation`:
+El rol temporal del laboratorio puede administrar S3, ECR, Lambda y API Gateway, pero no crear IAM/OIDC. Cargue `.env`; ese archivo ignorado por Git contiene los nombres reales del backend, del remoto y de `LabRole`:
 
-    terraform -chdir=infra/terraform/bootstrap apply \
-      -var='owner=adrian-alarcon' \
-      -var='state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1'
+    set -a
+    source .env
+    set +a
+    aws sts get-caller-identity
+    : "${TF_STATE_BUCKET:?Falta TF_STATE_BUCKET en .env}"
+    : "${LAB_ROLE_ARN:?Falta LAB_ROLE_ARN en .env}"
 
     aws s3 cp infra/terraform/bootstrap/terraform.tfstate \
-      s3://maia-online-shoppers-tfstate-712986489191-us-east-1/online-shoppers/dev/bootstrap.tfstate
+      "s3://$TF_STATE_BUCKET/online-shoppers/dev/bootstrap.tfstate"
 
-    terraform -chdir=infra/terraform/foundation init \
-      -backend-config='bucket=maia-online-shoppers-tfstate-712986489191-us-east-1' \
-      -backend-config='key=online-shoppers/dev/foundation.tfstate' \
-      -backend-config='region=us-east-1' \
+    terraform -chdir=infra/terraform/foundation init -reconfigure \
+      -backend-config="bucket=$TF_STATE_BUCKET" \
+      -backend-config="key=$TF_FOUNDATION_STATE_KEY" \
+      -backend-config="region=$CLOUD_AWS_REGION" \
       -backend-config='use_lockfile=true' \
       -backend-config='encrypt=true'
 
     terraform -chdir=infra/terraform/foundation apply \
-      -var='owner=adrian-alarcon' \
-      -var='dvc_bucket_name=maia-online-shoppers-dvc-712986489191-us-east-1' \
-      -var='terraform_state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1' \
+      -var="owner=$CLOUD_OWNER" \
+      -var="dvc_bucket_name=$DVC_S3_BUCKET" \
+      -var="terraform_state_bucket_name=$TF_STATE_BUCKET" \
       -var='github_owner=aladelca' \
       -var='github_repository=maia_despliegue_soluciones_microproyecto' \
-      -var='enable_deployment_resources=false'
+      -var='enable_deployment_resources=true' \
+      -var='enable_github_oidc_resources=false'
 
-Con `enable_deployment_resources=false`, Terraform administra el bucket DVC y devuelve `null` para los outputs de ECR y GitHub Actions. Use el valor por defecto `true` únicamente en una cuenta que permita crear IAM, OIDC y ECR.
+Esta combinación administra DVC y ECR, pero devuelve `null` para el rol OIDC de GitHub Actions. En `voclabs`, guarde `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN` como repository secrets de GitHub. El workflow pasa `LAMBDA_EXECUTION_ROLE_ARN` al servicio para reutilizar `LabRole` sin crear IAM. Los secrets deben actualizarse cada vez que expira o se reinicia la sesión del laboratorio.
 
 El stack `bootstrap` usa estado local porque crea el propio backend. Después de su primer `apply`, guarde la copia indicada en el bucket versionado. Antes de modificar el bootstrap desde otra máquina, recupérela así:
 
     aws s3 cp \
-      s3://maia-online-shoppers-tfstate-712986489191-us-east-1/online-shoppers/dev/bootstrap.tfstate \
+      "s3://$TF_STATE_BUCKET/online-shoppers/dev/bootstrap.tfstate" \
       infra/terraform/bootstrap/terraform.tfstate
 
 ## 3. Imagen y service
 
-Construya la imagen para linux/amd64, publique un tag igual al Git SHA y resuelva su digest. service exige una URI con @sha256 y rechaza latest.
+El workflow `.github/workflows/deploy-api.yml` obtiene el modelo desde DVC/S3, construye la imagen `linux/amd64`, publica un tag igual al Git SHA y resuelve su digest. `service` exige una URI con `@sha256` y rechaza `latest`. En `voclabs` se ejecuta con repository secrets temporales; en una cuenta permanente se recomienda OIDC.
 
-    docker buildx build --platform linux/amd64 --provenance=false -f docker/api.Dockerfile -t <ecr>:<git-sha> .
-    terraform -chdir=infra/terraform/service init \
-      -backend-config=../environments/dev/service.tfbackend
-    terraform -chdir=infra/terraform/service plan -var-file=../environments/dev/service.tfvars
+    gh workflow run deploy-api.yml --ref feature/implement-dvc-remote-on-amazon-s3
+    gh run list --workflow deploy-api.yml --limit 5
 
 Revise costos y el plan antes de apply. Después valide /health y /v1/predict.
 

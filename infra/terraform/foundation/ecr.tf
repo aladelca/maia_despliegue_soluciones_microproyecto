@@ -9,9 +9,8 @@ resource "aws_ecr_repository" "api" {
 data "aws_iam_policy_document" "lambda_ecr_retrieval" {
   count = var.enable_deployment_resources ? 1 : 0
   statement {
-    sid       = "LambdaECRImageRetrievalPolicy"
-    actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
-    resources = [aws_ecr_repository.api[0].arn]
+    sid     = "LambdaECRImageRetrievalPolicy"
+    actions = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]

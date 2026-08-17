@@ -1,25 +1,29 @@
+locals {
+  create_github_oidc_resources = var.enable_deployment_resources && var.enable_github_oidc_resources
+}
+
 data "tls_certificate" "github" {
-  count = var.enable_deployment_resources ? 1 : 0
+  count = local.create_github_oidc_resources ? 1 : 0
   url   = "https://token.actions.githubusercontent.com"
 }
 
 data "aws_caller_identity" "current" {
-  count = var.enable_deployment_resources ? 1 : 0
+  count = local.create_github_oidc_resources ? 1 : 0
 }
 
 data "aws_partition" "current" {
-  count = var.enable_deployment_resources ? 1 : 0
+  count = local.create_github_oidc_resources ? 1 : 0
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
-  count           = var.enable_deployment_resources ? 1 : 0
+  count           = local.create_github_oidc_resources ? 1 : 0
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = [data.tls_certificate.github[0].certificates[0].sha1_fingerprint]
 }
 
 data "aws_iam_policy_document" "github_assume_role" {
-  count = var.enable_deployment_resources ? 1 : 0
+  count = local.create_github_oidc_resources ? 1 : 0
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
@@ -43,13 +47,13 @@ data "aws_iam_policy_document" "github_assume_role" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  count              = var.enable_deployment_resources ? 1 : 0
+  count              = local.create_github_oidc_resources ? 1 : 0
   name               = "${var.project_name}-github-actions"
   assume_role_policy = data.aws_iam_policy_document.github_assume_role[0].json
 }
 
 data "aws_iam_policy_document" "github_permissions" {
-  count = var.enable_deployment_resources ? 1 : 0
+  count = local.create_github_oidc_resources ? 1 : 0
   statement {
     actions = [
       "ecr:GetAuthorizationToken",
@@ -178,7 +182,7 @@ data "aws_iam_policy_document" "github_permissions" {
 }
 
 resource "aws_iam_role_policy" "github_actions" {
-  count  = var.enable_deployment_resources ? 1 : 0
+  count  = local.create_github_oidc_resources ? 1 : 0
   name   = "${var.project_name}-github-actions"
   role   = aws_iam_role.github_actions[0].id
   policy = data.aws_iam_policy_document.github_permissions[0].json
