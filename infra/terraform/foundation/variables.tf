@@ -13,6 +13,12 @@ variable "environment" {
   default = "dev"
 }
 
+variable "enable_deployment_resources" {
+  type        = bool
+  description = "Create ECR and GitHub Actions IAM/OIDC resources in addition to DVC storage."
+  default     = true
+}
+
 variable "owner" {
   type = string
 }

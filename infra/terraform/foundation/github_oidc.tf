@@ -1,22 +1,30 @@
 data "tls_certificate" "github" {
-  url = "https://token.actions.githubusercontent.com"
+  count = var.enable_deployment_resources ? 1 : 0
+  url   = "https://token.actions.githubusercontent.com"
 }
 
-data "aws_caller_identity" "current" {}
-data "aws_partition" "current" {}
+data "aws_caller_identity" "current" {
+  count = var.enable_deployment_resources ? 1 : 0
+}
+
+data "aws_partition" "current" {
+  count = var.enable_deployment_resources ? 1 : 0
+}
 
 resource "aws_iam_openid_connect_provider" "github" {
+  count           = var.enable_deployment_resources ? 1 : 0
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.github.certificates[0].sha1_fingerprint]
+  thumbprint_list = [data.tls_certificate.github[0].certificates[0].sha1_fingerprint]
 }
 
 data "aws_iam_policy_document" "github_assume_role" {
+  count = var.enable_deployment_resources ? 1 : 0
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
     }
     condition {
       test     = "StringEquals"
@@ -35,11 +43,13 @@ data "aws_iam_policy_document" "github_assume_role" {
 }
 
 resource "aws_iam_role" "github_actions" {
+  count              = var.enable_deployment_resources ? 1 : 0
   name               = "${var.project_name}-github-actions"
-  assume_role_policy = data.aws_iam_policy_document.github_assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.github_assume_role[0].json
 }
 
 data "aws_iam_policy_document" "github_permissions" {
+  count = var.enable_deployment_resources ? 1 : 0
   statement {
     actions = [
       "ecr:GetAuthorizationToken",
@@ -59,7 +69,7 @@ data "aws_iam_policy_document" "github_permissions" {
       "ecr:SetRepositoryPolicy",
       "ecr:UploadLayerPart",
     ]
-    resources = [aws_ecr_repository.api.arn]
+    resources = [aws_ecr_repository.api[0].arn]
   }
   statement {
     actions   = ["s3:GetObject", "s3:ListBucket"]
@@ -72,8 +82,8 @@ data "aws_iam_policy_document" "github_permissions" {
       "s3:PutObject",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:s3:::${var.terraform_state_bucket_name}/online-shoppers/dev/service.tfstate",
-      "arn:${data.aws_partition.current.partition}:s3:::${var.terraform_state_bucket_name}/online-shoppers/dev/service.tfstate.tflock",
+      "arn:${data.aws_partition.current[0].partition}:s3:::${var.terraform_state_bucket_name}/online-shoppers/dev/service.tfstate",
+      "arn:${data.aws_partition.current[0].partition}:s3:::${var.terraform_state_bucket_name}/online-shoppers/dev/service.tfstate.tflock",
     ]
   }
   statement {
@@ -81,7 +91,7 @@ data "aws_iam_policy_document" "github_permissions" {
       "s3:GetBucketLocation",
       "s3:ListBucket",
     ]
-    resources = ["arn:${data.aws_partition.current.partition}:s3:::${var.terraform_state_bucket_name}"]
+    resources = ["arn:${data.aws_partition.current[0].partition}:s3:::${var.terraform_state_bucket_name}"]
   }
   statement {
     actions = [
@@ -99,7 +109,7 @@ data "aws_iam_policy_document" "github_permissions" {
       "lambda:UpdateFunctionConfiguration",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.project_name}-${var.environment}-api",
+      "arn:${data.aws_partition.current[0].partition}:lambda:${var.aws_region}:${data.aws_caller_identity.current[0].account_id}:function:${var.project_name}-${var.environment}-api",
     ]
   }
   statement {
@@ -117,7 +127,7 @@ data "aws_iam_policy_document" "github_permissions" {
       "iam:UpdateAssumeRolePolicy",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-${var.environment}-lambda",
+      "arn:${data.aws_partition.current[0].partition}:iam::${data.aws_caller_identity.current[0].account_id}:role/${var.project_name}-${var.environment}-lambda",
     ]
   }
   statement {
@@ -129,8 +139,8 @@ data "aws_iam_policy_document" "github_permissions" {
       "apigateway:PUT",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:apigateway:${var.aws_region}::/apis*",
-      "arn:${data.aws_partition.current.partition}:apigateway:${var.aws_region}::/tags/*",
+      "arn:${data.aws_partition.current[0].partition}:apigateway:${var.aws_region}::/apis*",
+      "arn:${data.aws_partition.current[0].partition}:apigateway:${var.aws_region}::/tags/*",
     ]
   }
   statement {
@@ -143,8 +153,8 @@ data "aws_iam_policy_document" "github_permissions" {
       "logs:UntagResource",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-${var.environment}-api*",
-      "arn:${data.aws_partition.current.partition}:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/api-gateway/${var.project_name}-${var.environment}*",
+      "arn:${data.aws_partition.current[0].partition}:logs:${var.aws_region}:${data.aws_caller_identity.current[0].account_id}:log-group:/aws/lambda/${var.project_name}-${var.environment}-api*",
+      "arn:${data.aws_partition.current[0].partition}:logs:${var.aws_region}:${data.aws_caller_identity.current[0].account_id}:log-group:/aws/api-gateway/${var.project_name}-${var.environment}*",
     ]
   }
   statement {
@@ -155,7 +165,7 @@ data "aws_iam_policy_document" "github_permissions" {
       "cloudwatch:UntagResource",
     ]
     resources = [
-      "arn:${data.aws_partition.current.partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alarm:${var.project_name}-${var.environment}-*",
+      "arn:${data.aws_partition.current[0].partition}:cloudwatch:${var.aws_region}:${data.aws_caller_identity.current[0].account_id}:alarm:${var.project_name}-${var.environment}-*",
     ]
   }
   statement {
@@ -168,7 +178,8 @@ data "aws_iam_policy_document" "github_permissions" {
 }
 
 resource "aws_iam_role_policy" "github_actions" {
+  count  = var.enable_deployment_resources ? 1 : 0
   name   = "${var.project_name}-github-actions"
-  role   = aws_iam_role.github_actions.id
-  policy = data.aws_iam_policy_document.github_permissions.json
+  role   = aws_iam_role.github_actions[0].id
+  policy = data.aws_iam_policy_document.github_permissions[0].json
 }

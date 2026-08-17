@@ -5,21 +5,20 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 ## Arquitectura
 
 - Entrenamiento bajo demanda desde notebooks; la lógica reutilizable vive en src/online_shoppers.
-- Dataset y champion versionados con DVC; S3 será creado por Terraform cuando se despliegue.
+- Dataset y champion versionados con DVC en un bucket S3 privado administrado por Terraform.
 - Experimentos registrados en MLflow local.
 - FastAPI adaptada a Lambda mediante Mangum y empaquetada como imagen ECR.
 - API Gateway expone HTTPS; Next.js se despliega en Vercel.
-- Terraform declara los recursos AWS. Esta implementación no ejecuta terraform apply ni crea recursos externos.
+- Terraform declara y administra los recursos AWS del proyecto.
 
 ## Inicio local
 
 > [!IMPORTANT]
-> No existe todavía un bucket S3 real para este proyecto. La URL
-> `s3://replace-with-dvc-bucket/online-shoppers` de `.dvc/config` es un
-> placeholder y `dvc pull` fallará mientras no se aplique Terraform y se
-> publique el contenido con `dvc push`. Para ejecutar el proyecto localmente
-> no necesita AWS, credenciales ni `dvc pull`: siga la ruta completa descrita
-> a continuación.
+> El remoto DVC está configurado en
+> `s3://maia-online-shoppers-dvc-712986489191-us-east-1/online-shoppers`.
+> `dvc pull` requiere credenciales temporales con acceso al bucket. Para
+> ejecutar el proyecto localmente sin AWS, siga la ruta completa descrita a
+> continuación.
 
 ### Requisitos locales
 
@@ -42,7 +41,7 @@ Si el archivo existe, puede pasar directamente al paso 2. El CSV no es
 necesario para hacer inferencia.
 
 En un clon nuevo el CSV y el joblib normalmente no existen porque Git solo
-versiona sus punteros `.dvc`. Como el remoto S3 todavía no está disponible,
+versiona sus punteros `.dvc`. Si no dispone de credenciales para el remoto S3,
 descargue temporalmente el dataset desde UCI y ejecute una vez el notebook de
 entrenamiento:
 
@@ -129,17 +128,15 @@ S3 funciona como remoto versionado de DVC. GitHub Actions recupera el modelo exa
 
 ### Cuándo usar DVC con S3
 
-No ejecute `dvc pull` contra el placeholder actual. El flujo S3 solo estará
-disponible después de crear la infraestructura declarada en Terraform. La
-configuración correcta se obtiene después de aplicar `foundation`:
+El remoto compartido está versionado en `.dvc/config`. Después de autenticarse
+en la cuenta AWS autorizada, valide su configuración y publique cambios así:
 
-    DVC_BUCKET=$(terraform -chdir=infra/terraform/foundation output -raw dvc_bucket_name)
-    uv run dvc remote add -f -d aws-s3 "s3://${DVC_BUCKET}/online-shoppers"
+    uv run dvc remote list
+    uv run dvc status -c
     uv run dvc push
 
-A partir de ese momento, otro clon con credenciales AWS autorizadas podrá usar
-`uv run dvc pull`. El nombre exacto del bucket no puede documentarse antes del
-`terraform apply`; consulte [la guía DVC/S3](docs/dvc-s3.md) para ese despliegue.
+Otro clon con credenciales AWS autorizadas podrá usar `uv run dvc pull`.
+Consulte [la guía DVC/S3](docs/dvc-s3.md) para operación y validación.
 
 ## Generar una predicción mediante la API
 
@@ -174,9 +171,9 @@ Consulte la [guía completa de la API](docs/api-guide.md) para conocer todas las
 ## Datos y entrenamiento
 
 Para el flujo local sin AWS, descargue el CSV desde UCI y ejecute los notebooks
-como se indica en el paso 1 de **Inicio local**. Use `dvc pull` únicamente
-cuando el remoto S3 real ya exista y contenga los objetos. Para explorar las
-corridas generadas por el entrenamiento:
+como se indica en el paso 1 de **Inicio local**. Con credenciales AWS
+autorizadas, use `dvc pull` para recuperar los objetos del remoto. Para explorar
+las corridas generadas por el entrenamiento:
 
     uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
 

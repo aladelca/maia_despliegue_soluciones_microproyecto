@@ -26,7 +26,6 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - run: uv sync --all-groups --locked
-      - run: uv run dvc remote add -f -d aws-s3 "${{ secrets.DVC_REMOTE_URL }}"
       - run: uv run dvc pull models/champion.joblib.dvc
       - run: uv run pytest -q tests/integration/test_model_smoke.py tests/integration/api
       - id: ecr

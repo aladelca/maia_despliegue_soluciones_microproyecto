@@ -1,4 +1,4 @@
 [core]
     remote = aws-s3
 ['remote "aws-s3"']
-    url = s3://replace-with-dvc-bucket/online-shoppers
+    url = s3://maia-online-shoppers-dvc-712986489191-us-east-1/online-shoppers

@@ -1,4 +1,5 @@
 resource "aws_ecr_repository" "api" {
+  count                = var.enable_deployment_resources ? 1 : 0
   name                 = "${var.project_name}-api"
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration { scan_on_push = true }
@@ -6,10 +7,11 @@ resource "aws_ecr_repository" "api" {
 }
 
 data "aws_iam_policy_document" "lambda_ecr_retrieval" {
+  count = var.enable_deployment_resources ? 1 : 0
   statement {
     sid       = "LambdaECRImageRetrievalPolicy"
     actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
-    resources = [aws_ecr_repository.api.arn]
+    resources = [aws_ecr_repository.api[0].arn]
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
@@ -18,12 +20,14 @@ data "aws_iam_policy_document" "lambda_ecr_retrieval" {
 }
 
 resource "aws_ecr_repository_policy" "lambda" {
-  repository = aws_ecr_repository.api.name
-  policy     = data.aws_iam_policy_document.lambda_ecr_retrieval.json
+  count      = var.enable_deployment_resources ? 1 : 0
+  repository = aws_ecr_repository.api[0].name
+  policy     = data.aws_iam_policy_document.lambda_ecr_retrieval[0].json
 }
 
 resource "aws_ecr_lifecycle_policy" "api" {
-  repository = aws_ecr_repository.api.name
+  count      = var.enable_deployment_resources ? 1 : 0
+  repository = aws_ecr_repository.api[0].name
   policy = jsonencode({
     rules = [{
       rulePriority = 1

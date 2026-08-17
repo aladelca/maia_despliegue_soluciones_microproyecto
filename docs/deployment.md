@@ -1,6 +1,6 @@
 # Instalación y despliegue
 
-No se ejecutó infraestructura externa durante la implementación. El orden evita dependencias circulares.
+El orden evita dependencias circulares. El entorno de laboratorio mantiene el estado Terraform y el remoto DVC en buckets separados.
 
 ## 1. Bootstrap de estado
 
@@ -18,11 +18,36 @@ Copie los archivos example y complete valores no secretos. Inicialice el backend
     terraform -chdir=infra/terraform/foundation plan -var-file=../environments/dev/foundation.tfvars
     terraform -chdir=infra/terraform/foundation apply -var-file=../environments/dev/foundation.tfvars
 
-Configure el remoto con docs/dvc-s3.md y ejecute dvc push.
+Compruebe el remoto versionado siguiendo `docs/dvc-s3.md` y ejecute `dvc push`.
 
-Copie el output `github_deploy_role_arn` al secreto de entorno `AWS_DEPLOY_ROLE_ARN` de GitHub. Configure también las variables `AWS_REGION`, `TERRAFORM_STATE_BUCKET`, `OWNER`, `ALLOWED_ORIGIN` y, si cambia el nombre por defecto, `ECR_REPOSITORY`; configure el secreto `DVC_REMOTE_URL`. El rol confía en el environment `dev` y dispone únicamente de las operaciones necesarias sobre el bucket de estado, ECR y los recursos nombrados del servicio.
+Copie el output `github_deploy_role_arn` al secreto de entorno `AWS_DEPLOY_ROLE_ARN` de GitHub. Configure también las variables `AWS_REGION`, `TERRAFORM_STATE_BUCKET`, `OWNER`, `ALLOWED_ORIGIN` y, si cambia el nombre por defecto, `ECR_REPOSITORY`. La URL del remoto DVC no es un secreto: está versionada en `.dvc/config`. El rol confía en el environment `dev` y dispone únicamente de las operaciones necesarias sobre el bucket de estado, ECR y los recursos nombrados del servicio.
 
 El workflow `Deploy API` se ejecuta manualmente desde GitHub Actions. Se mantiene en modo `workflow_dispatch` mientras Phase 6 esté pendiente para impedir despliegues fallidos o creación involuntaria de recursos al fusionar en `main`. Después de configurar y verificar AWS, DVC y el environment `dev`, el equipo puede habilitar un trigger automático protegido.
+
+### Variante para AWS Academy `voclabs`
+
+El rol temporal del laboratorio puede administrar S3, pero no crear los recursos IAM/OIDC del despliegue. Use un bucket de estado dedicado y desactive esos recursos al aplicar `foundation`:
+
+    terraform -chdir=infra/terraform/bootstrap apply \
+      -var='owner=adrian-alarcon' \
+      -var='state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1'
+
+    terraform -chdir=infra/terraform/foundation init \
+      -backend-config='bucket=maia-online-shoppers-tfstate-712986489191-us-east-1' \
+      -backend-config='key=online-shoppers/dev/foundation.tfstate' \
+      -backend-config='region=us-east-1' \
+      -backend-config='use_lockfile=true' \
+      -backend-config='encrypt=true'
+
+    terraform -chdir=infra/terraform/foundation apply \
+      -var='owner=adrian-alarcon' \
+      -var='dvc_bucket_name=maia-online-shoppers-dvc-712986489191-us-east-1' \
+      -var='terraform_state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1' \
+      -var='github_owner=aladelca' \
+      -var='github_repository=maia_despliegue_soluciones_microproyecto' \
+      -var='enable_deployment_resources=false'
+
+Con `enable_deployment_resources=false`, Terraform administra el bucket DVC y devuelve `null` para los outputs de ECR y GitHub Actions. Use el valor por defecto `true` únicamente en una cuenta que permita crear IAM, OIDC y ECR.
 
 ## 3. Imagen y service
 
