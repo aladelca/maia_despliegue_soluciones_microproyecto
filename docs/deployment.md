@@ -32,6 +32,9 @@ El rol temporal del laboratorio puede administrar S3, pero no crear los recursos
       -var='owner=adrian-alarcon' \
       -var='state_bucket_name=maia-online-shoppers-tfstate-712986489191-us-east-1'
 
+    aws s3 cp infra/terraform/bootstrap/terraform.tfstate \
+      s3://maia-online-shoppers-tfstate-712986489191-us-east-1/online-shoppers/dev/bootstrap.tfstate
+
     terraform -chdir=infra/terraform/foundation init \
       -backend-config='bucket=maia-online-shoppers-tfstate-712986489191-us-east-1' \
       -backend-config='key=online-shoppers/dev/foundation.tfstate' \
@@ -48,6 +51,12 @@ El rol temporal del laboratorio puede administrar S3, pero no crear los recursos
       -var='enable_deployment_resources=false'
 
 Con `enable_deployment_resources=false`, Terraform administra el bucket DVC y devuelve `null` para los outputs de ECR y GitHub Actions. Use el valor por defecto `true` únicamente en una cuenta que permita crear IAM, OIDC y ECR.
+
+El stack `bootstrap` usa estado local porque crea el propio backend. Después de su primer `apply`, guarde la copia indicada en el bucket versionado. Antes de modificar el bootstrap desde otra máquina, recupérela así:
+
+    aws s3 cp \
+      s3://maia-online-shoppers-tfstate-712986489191-us-east-1/online-shoppers/dev/bootstrap.tfstate \
+      infra/terraform/bootstrap/terraform.tfstate
 
 ## 3. Imagen y service
 
