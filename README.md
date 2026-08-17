@@ -22,6 +22,44 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 - Para el despliegue completo: permisos sobre ECR, IAM, Lambda, API Gateway,
   CloudWatch y el backend S3 de Terraform.
 
+#### Instalar Terraform en macOS
+
+La opción recomendada por HashiCorp es instalar Terraform desde su tap oficial
+de Homebrew:
+
+    brew tap hashicorp/tap
+    brew install hashicorp/tap/terraform
+    terraform version
+
+Si Terraform ya estaba instalado desde ese tap, actualícelo con
+`brew upgrade hashicorp/tap/terraform`. El proyecto requiere Terraform 1.10 o
+superior y CI utiliza la versión 1.15.8.
+
+Para usar exactamente la misma versión que CI sin depender de Homebrew,
+descargue el binario oficial y valide su checksum. En un Mac con Apple Silicon:
+
+    TERRAFORM_VERSION=1.15.8
+    TERRAFORM_PACKAGE="terraform_${TERRAFORM_VERSION}_darwin_arm64.zip"
+    curl --fail --location \
+      --output "/tmp/${TERRAFORM_PACKAGE}" \
+      "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/${TERRAFORM_PACKAGE}"
+    curl --fail --location \
+      --output "/tmp/terraform_${TERRAFORM_VERSION}_SHA256SUMS" \
+      "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_SHA256SUMS"
+    EXPECTED_SHA=$(awk -v package="$TERRAFORM_PACKAGE" '$2 == package { print $1 }' \
+      "/tmp/terraform_${TERRAFORM_VERSION}_SHA256SUMS")
+    ACTUAL_SHA=$(shasum -a 256 "/tmp/${TERRAFORM_PACKAGE}" | awk '{ print $1 }')
+    test -n "$EXPECTED_SHA" && test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+    unzip -o "/tmp/${TERRAFORM_PACKAGE}" -d "/tmp/terraform-${TERRAFORM_VERSION}"
+    sudo install -m 0755 "/tmp/terraform-${TERRAFORM_VERSION}/terraform" \
+      /usr/local/bin/terraform
+    terraform version
+
+En un Mac Intel, sustituya `darwin_arm64` por `darwin_amd64`. Consulte la
+[instalación oficial de Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
+y la [verificación oficial del archivo](https://developer.hashicorp.com/terraform/tutorials/cli/verify-archive)
+para más detalles.
+
 Nunca incluya access keys en Git ni en `.dvc/config`. Si las credenciales
 temporales están en el `.env` local ignorado por Git, cárguelas y compruebe la
 identidad antes de ejecutar Terraform o DVC:
