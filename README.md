@@ -91,12 +91,18 @@ y OIDC. Ejecútelo en una cuenta o rol autorizado que también pueda leer el
 bucket DVC; lo más simple es mantener S3, ECR, Lambda y Terraform en la misma
 cuenta.
 
-Primero copie el archivo de variables, sustituya todos sus valores
-`replace-*` y aplique `foundation` con los recursos de despliegue habilitados:
+Antes de cambiar de cuenta, complete el paso 1 para conservar una copia local
+del dataset y el modelo. En la cuenta definitiva, cree primero el bucket de
+estado con el paso 1 de [la guía de despliegue](docs/deployment.md) y sustituya
+todos los valores `replace-*` y `<...>` de los siguientes comandos.
+
+Después copie el archivo de variables y aplique `foundation` con los recursos
+de despliegue habilitados:
 
     CLOUD_AWS_REGION=us-east-1
-    cp infra/terraform/environments/dev/foundation.example.tfvars \
-      infra/terraform/environments/dev/foundation.tfvars
+    test -f infra/terraform/environments/dev/foundation.tfvars || \
+      cp infra/terraform/environments/dev/foundation.example.tfvars \
+        infra/terraform/environments/dev/foundation.tfvars
 
     terraform -chdir=infra/terraform/foundation init -reconfigure \
       -backend-config='bucket=<terraform-state-bucket>' \
@@ -112,6 +118,18 @@ Primero copie el archivo de variables, sustituya todos sus valores
 
     terraform -chdir=infra/terraform/foundation apply \
       /tmp/online-shoppers-cloud-foundation.tfplan
+
+Si la cuenta definitiva usa otro bucket DVC, actualice la configuración
+versionada y publique los artefactos materializados antes del build:
+
+    CLOUD_DVC_BUCKET=$(terraform -chdir=infra/terraform/foundation output -raw dvc_bucket_name)
+    uv run dvc remote modify aws-s3 url \
+      "s3://$CLOUD_DVC_BUCKET/online-shoppers"
+    uv run dvc push
+    uv run dvc status -c
+
+Incluya el cambio resultante de `.dvc/config` en el mismo commit que cambia de
+cuenta o entorno.
 
 Recupere el modelo, construya la imagen para Lambda y publíquela con un tag
 inmutable igual al commit Git:
