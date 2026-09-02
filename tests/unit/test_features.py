@@ -1,7 +1,13 @@
 import pandas as pd
+import pytest
 
 from online_shoppers.data import FEATURE_COLUMNS
-from online_shoppers.features import build_preprocessor, model_feature_columns
+from online_shoppers.features import (
+    SessionFeatureEngineer,
+    build_preprocessor,
+    engineered_feature_columns,
+    model_feature_columns,
+)
 
 
 def feature_frame() -> pd.DataFrame:
@@ -68,3 +74,40 @@ def test_feature_columns_can_exclude_page_values() -> None:
 
     assert "PageValues" not in columns
     assert len(columns) == len(FEATURE_COLUMNS) - 1
+
+
+@pytest.mark.parametrize("include_page_values", [True, False])
+def test_session_feature_engineer_is_finite_and_respects_page_values(
+    include_page_values: bool,
+) -> None:
+    train = feature_frame()
+    train.loc[0, "ProductRelated"] = 0
+    train.loc[0, "ProductRelated_Duration"] = 0
+    transformed = SessionFeatureEngineer(
+        include_page_values=include_page_values,
+        rare_traffic_min_count=2,
+    ).fit_transform(train)
+
+    assert transformed.select_dtypes(include="number").notna().all(axis=None)
+    assert (
+        transformed.select_dtypes(include="number")
+        .map(lambda value: abs(value) < float("inf"))
+        .all(axis=None)
+    )
+    assert ("PageValues" in transformed.columns) is include_page_values
+    assert ("page_values_log" in transformed.columns) is include_page_values
+    assert set(engineered_feature_columns(include_page_values=include_page_values)).issubset(
+        transformed.columns
+    )
+
+
+def test_session_feature_engineer_learns_rare_traffic_groups_from_training_only() -> None:
+    train = feature_frame()
+    train["TrafficType"] = [1, 1]
+    unknown = train.iloc[[0]].copy()
+    unknown["TrafficType"] = 99
+
+    engineer = SessionFeatureEngineer(rare_traffic_min_count=2).fit(train)
+    transformed = engineer.transform(unknown)
+
+    assert transformed.iloc[0]["traffic_type_grouped"] == "rare"

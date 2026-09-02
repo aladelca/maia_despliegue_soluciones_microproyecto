@@ -57,6 +57,8 @@ jobs:
       - run: terraform -chdir=infra/terraform/foundation validate
       - run: terraform -chdir=infra/terraform/service init -backend=false
       - run: terraform -chdir=infra/terraform/service validate
+      - run: terraform -chdir=infra/terraform/mlflow init -backend=false
+      - run: terraform -chdir=infra/terraform/mlflow validate
 
   compose:
     runs-on: ubuntu-latest

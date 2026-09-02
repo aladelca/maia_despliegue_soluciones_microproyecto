@@ -57,5 +57,11 @@ class MetadataResponse(BaseModel):
     feature_names: list[str]
     threshold: Annotated[float, Field(ge=0, le=1)]
     champion: str | None = None
+    mlflow_run_id: str | None = None
+    mlflow_experiment: str | None = None
+    feature_set: str | None = None
+    include_page_values: bool | None = None
+    baseline_rate: Annotated[float, Field(ge=0, le=1)] | None = None
+    data_version: str | None = None
     validation_metrics: dict[str, Any] = Field(default_factory=dict)
     test_metrics: dict[str, Any] = Field(default_factory=dict)

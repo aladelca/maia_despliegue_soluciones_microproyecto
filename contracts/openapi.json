@@ -45,6 +45,19 @@
       },
       "MetadataResponse": {
         "properties": {
+          "baseline_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baseline Rate"
+          },
           "champion": {
             "anyOf": [
               {
@@ -56,12 +69,67 @@
             ],
             "title": "Champion"
           },
+          "data_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Version"
+          },
           "feature_names": {
             "items": {
               "type": "string"
             },
             "title": "Feature Names",
             "type": "array"
+          },
+          "feature_set": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feature Set"
+          },
+          "include_page_values": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Page Values"
+          },
+          "mlflow_experiment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlflow Experiment"
+          },
+          "mlflow_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mlflow Run Id"
           },
           "model_version": {
             "title": "Model Version",

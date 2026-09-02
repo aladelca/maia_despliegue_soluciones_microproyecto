@@ -1,0 +1,68 @@
+#!/bin/bash
+set -euxo pipefail
+exec > >(tee /var/log/online-shoppers-bootstrap.log | logger -t online-shoppers-bootstrap) 2>&1
+
+dnf install --assumeyes docker git jq
+systemctl enable --now docker
+systemd-run --unit=online-shoppers-four-hour-stop --on-active=4h /usr/sbin/shutdown -h now
+
+install -d -m 0755 /opt/online-shoppers/input /opt/online-shoppers/output /opt/mlflow
+chown -R 1000:1000 /opt/online-shoppers/input /opt/online-shoppers/output
+git clone --depth 1 --branch "${git_ref}" "${repository_url}" /opt/online-shoppers/repo
+cd /opt/online-shoppers/repo
+
+docker build --file docker/mlflow.Dockerfile --tag online-shoppers-mlflow:3.15.1 .
+docker run --detach \
+  --name online-shoppers-mlflow \
+  --restart unless-stopped \
+  --publish 5000:5000 \
+  --volume /opt/mlflow:/mlflow \
+  --env AWS_DEFAULT_REGION="${aws_region}" \
+  online-shoppers-mlflow:3.15.1 \
+  server \
+  --backend-store-uri sqlite:////mlflow/mlflow.db \
+  --artifacts-destination "s3://${artifact_bucket_name}/artifacts" \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --allowed-hosts "*" \
+  --cors-allowed-origins "*"
+
+for attempt in $(seq 1 60); do
+  if curl --fail --silent http://127.0.0.1:5000/ >/dev/null; then
+    break
+  fi
+  sleep 5
+done
+curl --fail http://127.0.0.1:5000/ >/dev/null
+
+aws s3 cp "${dvc_dataset_s3_uri}" /opt/online-shoppers/input/online_shoppers_intention.csv
+docker build --file docker/experiment.Dockerfile --tag online-shoppers-experiment:campaign .
+
+set +e
+docker run --rm --network host \
+  --volume /opt/online-shoppers/input:/input:ro \
+  --volume /opt/online-shoppers/output:/output \
+  --env UV_CACHE_DIR=/tmp/uv-cache \
+  online-shoppers-experiment:campaign \
+  experiment \
+  --profile full \
+  --tracking-uri http://127.0.0.1:5000 \
+  --data-path /input/online_shoppers_intention.csv \
+  --data-version "${dvc_data_version}" \
+  --output-root /output \
+  --experiment-name "${experiment_name}" \
+  --registered-model-name "${registered_model_name}" \
+  --git-revision "${git_ref}" \
+  2>&1 | tee /opt/online-shoppers/experiment.log
+experiment_status=$${PIPESTATUS[0]}
+set -e
+
+aws s3 sync /opt/online-shoppers/output "s3://${artifact_bucket_name}/campaign-output/${git_ref}/"
+aws s3 cp /opt/online-shoppers/experiment.log "s3://${artifact_bucket_name}/campaign-output/${git_ref}/experiment.log"
+if [ "$experiment_status" -eq 0 ]; then
+  echo success >/opt/online-shoppers/status
+else
+  echo failed >/opt/online-shoppers/status
+fi
+aws s3 cp /opt/online-shoppers/status "s3://${artifact_bucket_name}/campaign-output/${git_ref}/status"
+exit "$experiment_status"
