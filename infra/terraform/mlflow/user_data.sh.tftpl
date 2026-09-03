@@ -6,10 +6,21 @@ dnf install --assumeyes docker git jq
 systemctl enable --now docker
 systemd-run --unit=online-shoppers-four-hour-stop --on-active=4h /usr/sbin/shutdown -h now
 
+# The AWS Academy policy limits the runner to 4 GiB RAM. A bounded swap file
+# avoids transient OOM failures while loading booster and PyTorch dependencies.
+if ! swapon --show=NAME --noheadings | grep -q /swapfile; then
+  fallocate -l 4G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo "/swapfile none swap sw 0 0" >>/etc/fstab
+fi
+
 install -d -m 0755 /opt/online-shoppers/input /opt/online-shoppers/output /opt/mlflow
 chown -R 1000:1000 /opt/online-shoppers/input /opt/online-shoppers/output
 git clone --depth 1 --branch "${git_ref}" "${repository_url}" /opt/online-shoppers/repo
 cd /opt/online-shoppers/repo
+resolved_git_revision="$(git rev-parse HEAD)"
 
 docker build --file docker/mlflow.Dockerfile --tag online-shoppers-mlflow:3.15.1 .
 docker run --detach \
@@ -52,7 +63,7 @@ docker run --rm --network host \
   --output-root /output \
   --experiment-name "${experiment_name}" \
   --registered-model-name "${registered_model_name}" \
-  --git-revision "${git_ref}" \
+  --git-revision "$resolved_git_revision" \
   2>&1 | tee /opt/online-shoppers/experiment.log
 experiment_status=$${PIPESTATUS[0]}
 set -e

@@ -1,8 +1,8 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 ENV PYTHONUNBUFFERED=1 \
+    GIT_PYTHON_REFRESH=quiet \
     UV_CACHE_DIR=/tmp/uv-cache \
-    UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
 WORKDIR /app
@@ -14,8 +14,11 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 
-RUN uv sync --frozen --all-groups --no-editable
+RUN uv sync --frozen --all-groups --no-editable \
+    && rm -rf /tmp/uv-cache
 
-USER 1000:1000
+RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin experiment
+
+USER experiment
 
 ENTRYPOINT ["/app/.venv/bin/python", "-m", "online_shoppers"]

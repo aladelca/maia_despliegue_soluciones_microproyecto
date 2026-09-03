@@ -57,7 +57,7 @@ variable "allowed_cidr" {
 
 variable "instance_type" {
   type    = string
-  default = "t3.xlarge"
+  default = "t3.medium"
 }
 
 variable "instance_profile_name" {
