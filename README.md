@@ -47,8 +47,9 @@ Estado operativo documentado:
 
 - API Gateway/Lambda: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>.
 - EC2 de MLflow: detenida después de la campaña; EBS y S3 conservan los runs.
-- Vercel: el preview usado como evidencia expiró; el deployment persistente debe crearse con la
-  configuración del paso 10 y su nuevo dominio debe agregarse a CORS.
+- Vercel: el proyecto GitHub está conectado y el PR tiene un
+  [preview protegido](https://maia-despliegue-soluci-git-e02deb-alarconadrianc-7868s-projects.vercel.app).
+  El dominio público de producción y su CORS se completan al fusionar/desplegar `main`.
 
 Consulte la [arquitectura](docs/architecture.md), la
 [guía de experimentación](docs/experimentation.md), la

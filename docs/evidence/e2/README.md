@@ -3,7 +3,9 @@
 ## Resultado desplegado
 
 - API Gateway: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>
-- Frontend Vercel temporal usado en la validación (expirado):
+- Frontend Vercel conectado a GitHub, preview actual protegido por login:
+  <https://maia-despliegue-soluci-git-e02deb-alarconadrianc-7868s-projects.vercel.app>
+- Frontend temporal usado en la validación E2E original (expirado):
   <https://temporary-quick-indigo-ntrfzf9.vercel.app>
 - Pull request: <https://github.com/aladelca/maia_despliegue_soluciones_microproyecto/pull/6>
 - Lambda: `online-shoppers-ml-dev-api`
@@ -11,10 +13,10 @@
 - Commit ejecutado por la campaña: `cb1a3433c1b509c695147cd56c81d325e77ca436`
 - Dataset DVC: `md5:cc6ec1db03b4f10f8de52c56ff48b085`
 
-El deployment de Vercel se creó en modo temporal y fue validado extremo a extremo. Su expiración
-posterior no invalida la evidencia, pero no es el URL operativo. Para crear el deployment
-persistente se debe importar `main` con Root Directory `web`, preset Next.js y
-`NEXT_PUBLIC_API_BASE_URL` apuntando a API Gateway; luego se actualiza CORS con el dominio nuevo.
+El deployment temporal fue validado extremo a extremo antes de expirar. Después se conectó el
+repositorio al proyecto Vercel con Root Directory `web`; el check del PR terminó en `Ready`, pero
+su preview requiere autenticación del equipo. El dominio público de producción se obtiene al
+fusionar y desplegar `main`. CORS debe actualizarse con ese origin exacto antes del smoke final.
 
 ## Campaña EC2 y MLflow
 
