@@ -13,6 +13,18 @@ variable "environment" {
   default = "dev"
 }
 
+variable "enable_deployment_resources" {
+  type        = bool
+  description = "Create ECR resources in addition to DVC storage."
+  default     = true
+}
+
+variable "enable_github_oidc_resources" {
+  type        = bool
+  description = "Create the GitHub Actions IAM role and OIDC provider. Disable this in voclabs."
+  default     = true
+}
+
 variable "owner" {
   type = string
 }

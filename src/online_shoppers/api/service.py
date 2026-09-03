@@ -44,6 +44,12 @@ class PredictionService:
             feature_names=list(self.bundle.feature_names),
             threshold=self.bundle.threshold,
             champion=self.metadata.get("champion"),
+            mlflow_run_id=self.metadata.get("mlflow_run_id"),
+            mlflow_experiment=self.metadata.get("mlflow_experiment"),
+            feature_set=self.metadata.get("feature_set"),
+            include_page_values=self.metadata.get("include_page_values"),
+            baseline_rate=self.metadata.get("baseline_rate"),
+            data_version=self.metadata.get("data_version"),
             validation_metrics=dict(self.metadata.get("validation_metrics", {})),
             test_metrics=dict(self.metadata.get("test_metrics", {})),
         )

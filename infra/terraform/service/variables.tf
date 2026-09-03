@@ -16,6 +16,22 @@ variable "environment" {
 variable "owner" {
   type = string
 }
+
+variable "lambda_execution_role_arn" {
+  type        = string
+  description = "Existing Lambda execution role ARN. When null, Terraform creates a dedicated role."
+  default     = null
+  nullable    = true
+
+  validation {
+    condition = (
+      var.lambda_execution_role_arn == null ||
+      can(regex("^arn:[^:]+:iam::[0-9]{12}:role/.+$", var.lambda_execution_role_arn))
+    )
+    error_message = "lambda_execution_role_arn must be null or a valid IAM role ARN."
+  }
+}
+
 variable "image_uri" {
   type        = string
   description = "Immutable ECR image URI including its sha256 digest."

@@ -1,0 +1,12 @@
+owner                 = "replace-me"
+artifact_bucket_name  = "replace-with-globally-unique-mlflow-bucket"
+dvc_dataset_s3_uri    = "s3://replace-with-dvc-bucket/online-shoppers/files/md5/cc/example"
+dvc_data_version      = "md5:replace-me"
+repository_url        = "https://github.com/replace-me/maia_despliegue_soluciones_microproyecto.git"
+git_ref               = "feature/replace-me"
+allowed_cidr          = "203.0.113.10/32"
+instance_type         = "t3.medium"
+instance_profile_name = "LabInstanceProfile"
+root_volume_gb        = 60
+experiment_name       = "online-shoppers-ec2-large-experiment"
+registered_model_name = "online-shoppers-purchase-intention"

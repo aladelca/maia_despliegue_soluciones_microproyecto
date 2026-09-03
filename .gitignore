@@ -43,6 +43,7 @@ htmlcov/
 *.tfplan
 *.tflock
 *.tfvars
+*.tfbackend
 !*.example.tfvars
 !*.example.tfbackend
 

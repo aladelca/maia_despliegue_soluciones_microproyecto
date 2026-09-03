@@ -3,6 +3,11 @@ resource "aws_s3_bucket" "dvc" {
   lifecycle { prevent_destroy = true }
 }
 
+resource "aws_s3_bucket_ownership_controls" "dvc" {
+  bucket = aws_s3_bucket.dvc.id
+  rule { object_ownership = "BucketOwnerEnforced" }
+}
+
 resource "aws_s3_bucket_versioning" "dvc" {
   bucket = aws_s3_bucket.dvc.id
   versioning_configuration { status = "Enabled" }
@@ -31,5 +36,32 @@ resource "aws_s3_bucket_lifecycle_configuration" "dvc" {
     status = "Enabled"
     filter {}
     noncurrent_version_expiration { noncurrent_days = 90 }
+    abort_incomplete_multipart_upload { days_after_initiation = 7 }
   }
+}
+
+data "aws_iam_policy_document" "dvc_enforce_tls" {
+  statement {
+    sid     = "DenyInsecureTransport"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.dvc.arn,
+      "${aws_s3_bucket.dvc.arn}/*",
+    ]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "dvc_enforce_tls" {
+  bucket = aws_s3_bucket.dvc.id
+  policy = data.aws_iam_policy_document.dvc_enforce_tls.json
 }

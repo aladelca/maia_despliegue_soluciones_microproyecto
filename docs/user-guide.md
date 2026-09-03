@@ -8,12 +8,17 @@
 
 La pantalla muestra:
 
+- El nombre del champion desplegado y su run ID de MLflow.
+- La versión DVC del dataset, feature set y uso o no de `PageValues`.
+- PR-AUC promedio de validación y PR-AUC del audit set.
 - Compra probable o poco probable según el umbral del modelo.
 - La probabilidad estimada para la sesión.
-- Una comparación contra la tasa positiva del dataset, 15.5%.
+- Una comparación contra la tasa positiva obtenida dinámicamente desde la metadata del modelo.
 - El umbral y la versión del modelo que generó la respuesta.
 
-Si aparece un error, revise los rangos e intente nuevamente. Si persiste, verifique que la API responda en /health.
+Si la metadata no puede cargarse, el formulario sigue habilitado y muestra una advertencia. Si una
+predicción falla, revise los rangos e intente nuevamente. Si persiste, verifique que la API responda
+en `/health` y que CORS permita el dominio exacto de Vercel.
 
 La salida es una estimación predictiva basada en un dataset académico. No explica causalidad ni debe utilizarse como única base para tomar decisiones sobre personas.
 
