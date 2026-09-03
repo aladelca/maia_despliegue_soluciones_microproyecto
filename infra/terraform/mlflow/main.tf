@@ -48,7 +48,6 @@ resource "aws_instance" "mlflow_experiment" {
   iam_instance_profile        = var.instance_profile_name
   vpc_security_group_ids      = [aws_security_group.mlflow.id]
 
-  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     artifact_bucket_name  = aws_s3_bucket.mlflow.id
     aws_region            = var.aws_region
@@ -80,6 +79,9 @@ resource "aws_instance" "mlflow_experiment" {
 
   lifecycle {
     prevent_destroy = true
+    # AWS clears the ephemeral public-IP association while the instance is stopped.
+    # Ignoring that read-only drift prevents a false replacement plan after evidence capture.
+    ignore_changes = [associate_public_ip_address]
   }
 
   depends_on = [
