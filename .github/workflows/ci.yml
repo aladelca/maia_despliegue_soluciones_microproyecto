@@ -17,8 +17,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --all-groups --locked
-      - run: uv run ruff format --check src tests
-      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests notebook/online-shoppers-ec2-large.ipynb
+      - run: uv run ruff check src tests notebook/online-shoppers-ec2-large.ipynb
       - run: uv run mypy src tests
       - run: uv run pytest -q
 
