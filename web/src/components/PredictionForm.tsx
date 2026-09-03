@@ -12,6 +12,7 @@ import { PredictionResult } from "./PredictionResult";
 
 type PredictionFormProps = {
   predict?: (features: SessionFeatures) => Promise<PredictionResponse>;
+  baselineRate?: number;
 };
 
 type NumberField = {
@@ -59,7 +60,7 @@ function NumberInput({ field }: { field: NumberField }) {
   );
 }
 
-export function PredictionForm({ predict = predictPurchase }: PredictionFormProps) {
+export function PredictionForm({ predict = predictPurchase, baselineRate }: PredictionFormProps) {
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -133,7 +134,7 @@ export function PredictionForm({ predict = predictPurchase }: PredictionFormProp
       </form>
 
       {error ? <p role="alert" className="error-message">{error}</p> : null}
-      {result ? <PredictionResult result={result} /> : null}
+      {result ? <PredictionResult baselineRate={baselineRate} result={result} /> : null}
     </>
   );
 }

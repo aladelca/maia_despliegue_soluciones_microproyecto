@@ -4,6 +4,10 @@
     | ¿Esta sesión terminará en compra?                          |
     | Complete las señales disponibles de la sesión.             |
     +------------------------------------+-----------------------+
+    | Campeón: catboost__...                                     |
+    | MLflow <run-id> · Datos md5:<hash>                         |
+    | PR-AUC CV 75.6% · PR-AUC audit 73.7% · Umbral 56.7%        |
+    +------------------------------------+-----------------------+
     | Administrative [ 0 ]              | Month [ Nov       v ] |
     | Administrative duration [ 0 ]     | Visitor [ Returning ] |
     | Informational [ 0 ]               | Weekend [ No       ]  |
@@ -22,4 +26,6 @@
     | Predicción orientativa; no demuestra causalidad.            |
     +------------------------------------------------------------+
 
-Estados requeridos: vacío, enviando, resultado y error recuperable. No existen páginas ni navegación adicionales.
+Estados requeridos: metadata cargando/no disponible, formulario vacío, enviando, resultado y error
+recuperable. La predicción sigue disponible si falla únicamente la consulta de metadata. No existen
+páginas ni navegación adicionales.

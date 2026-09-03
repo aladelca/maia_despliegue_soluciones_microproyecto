@@ -5,6 +5,7 @@ import { PredictionResult } from "./PredictionResult";
 it("renders probability, threshold, model, and baseline comparison", () => {
   render(
     <PredictionResult
+      baselineRate={0.22}
       result={{
         will_purchase: true,
         purchase_probability: 0.73,
@@ -17,6 +18,6 @@ it("renders probability, threshold, model, and baseline comparison", () => {
   expect(screen.getByRole("status")).toHaveTextContent("Compra probable");
   expect(screen.getByText("73,0%")).toBeInTheDocument();
   expect(screen.getByText(/Umbral 60,0%/)).toBeInTheDocument();
-  expect(screen.getByText(/Tasa base 15.5%/)).toBeInTheDocument();
+  expect(screen.getByText(/Tasa base 22.0%/)).toBeInTheDocument();
   expect(screen.getByText(/abc123/)).toBeInTheDocument();
 });

@@ -19,22 +19,25 @@ Las decisiones se tomaron con los siguientes criterios:
 ```text
                          FLUJO DE ENTRENAMIENTO
 
- Git commit ───────┐
-                   │
- DVC pointer ──────┼──> Notebook + módulos Python ──> MLflow SQLite
-                   │                 │
- S3 DVC ───────────┘                 └──> champion.joblib + metadata
-                                                  │
-                                             DVC pointer
-                                                  │
-                                               S3 DVC
+ Git branch/tag ───────────────┐
+                              │
+ DVC pointer + objeto S3 ─────┼──> EC2 temporal (Docker)
+                              │          │
+ Terraform mlflow ────────────┘          ├──> MLflow + SQLite en EBS
+                                         ├──> 66 candidatos × 5 folds
+                                         ├──> artefactos/resultados en S3
+                                         └──> champion.joblib + metadata
+                                                        │
+                                                   DVC pointer
+                                                        │
+                                                     S3 DVC
 
 
                          FLUJO DE DESPLIEGUE
 
- GitHub Actions ──OIDC──> AWS IAM
-       │                     │
-       ├── dvc pull <────────┘
+ GitHub Actions ──credenciales temporales/OIDC──> AWS IAM
+       │                                             │
+       ├── dvc pull <────────────────────────────────┘
        ├── tests
        ├── Docker build: FastAPI + champion
        ├── push por Git SHA ───────────────> Amazon ECR
@@ -63,8 +66,9 @@ Las decisiones se tomaron con los siguientes criterios:
 | --- | --- | --- |
 | Git/GitHub | Versionar código, notebooks, configuración, metadata y archivos `.dvc` | No almacena CSV, joblib, secretos ni estado Terraform |
 | DVC + S3 | Versionar el contenido pesado del dataset y del modelo mediante hashes | No sirve inferencias ni expone objetos públicamente |
-| Notebooks | Orquestar EDA y una corrida de entrenamiento comprensible para el equipo | No contienen toda la lógica crítica; reutilizan módulos en `src/` |
-| MLflow SQLite | Registrar parámetros, métricas y artefactos de los experimentos locales | No funciona como servicio multiusuario o registro de producción |
+| Notebook canónico | Presentar protocolo, leaderboard y champion exportados por la campaña | No vuelve a entrenar ni reemplaza el orquestador en `src/` |
+| EC2 temporal | Ejecutar contenedores de MLflow y experimentación con CPU y memoria delimitadas | No atiende inferencias ni permanece encendida después de la campaña |
+| MLflow + EBS/S3 | Registrar los 66 candidatos, folds, artifacts y modelo registrado | No se expone públicamente ni funciona como servicio permanente multiusuario |
 | Amazon ECR | Almacenar imágenes inmutables del backend | No ejecuta contenedores; esa responsabilidad pertenece a Lambda |
 | AWS Lambda | Ejecutar la imagen que contiene FastAPI, dependencias y modelo champion | No entrena ni descarga el modelo desde S3 durante una petición |
 | API Gateway | Proveer endpoint HTTPS, integración Lambda, CORS y logs de acceso | No implementa la lógica de predicción |
@@ -75,9 +79,16 @@ Las decisiones se tomaron con los siguientes criterios:
 
 ## Flujo de entrenamiento y trazabilidad
 
-El CSV se materializa con `dvc pull`. `01_eda.ipynb` valida la calidad y genera resúmenes y figuras. `02_model_training.ipynb` llama funciones reutilizables de `src/online_shoppers`, compara seis candidatos —tres algoritmos con y sin `PageValues`— y registra las corridas en MLflow.
+EC2 descarga la key content-addressed señalada por el pointer DVC, en lugar de depender de un
+nombre mutable. El contenedor de experimentación llama funciones reutilizables de
+`src/online_shoppers`, genera features dentro de cada fold y compara 66 candidatos pertenecientes
+a nueve familias, con y sin `PageValues`. Todas las corridas quedan en el servidor MLflow de la
+misma instancia y sus artefactos en S3.
 
-La selección utiliza F1 sobre validación. El conjunto de test se consulta una sola vez después de elegir el champion. El resultado serializado es un `ModelBundle` que contiene:
+Las sesiones duplicadas se mantienen en el mismo grupo. Un primer `StratifiedGroupKFold(5)` separa
+desarrollo y audit; otro `StratifiedGroupKFold(5)` produce métricas y probabilidades OOF. La
+selección usa PR-AUC CV, el umbral maximiza F1 OOF y el audit set se consulta una sola vez después
+de elegir el champion. El resultado serializado es un `ModelBundle` que contiene:
 
 - el `Pipeline` completo de scikit-learn;
 - el preprocesamiento y orden esperado de variables;
@@ -88,8 +99,9 @@ La selección utiliza F1 sobre validación. El conjunto de test se consulta una 
 El joblib se acompaña de metadata JSON y un SHA-256. DVC versiona el binario y Git conserva el pointer. Esta cadena permite relacionar:
 
 ```text
-commit Git -> pointer DVC -> hash del joblib -> metadata -> métricas MLflow
-           -> imagen ECR por Git SHA -> digest desplegado en Lambda
+commit Git -> hash DVC del dataset -> run/candidate MLflow -> champion run
+           -> hash del joblib + pointer DVC -> imagen ECR por Git SHA
+           -> digest desplegado en Lambda -> metadata mostrada en Vercel
 ```
 
 La relación evita el escenario en que la API anuncie una versión, pero ejecute silenciosamente otro modelo.
@@ -116,7 +128,9 @@ El costo de esta decisión es que una nueva versión del modelo requiere reconst
 7. La API compara la probabilidad con el umbral versionado y devuelve probabilidad, clase, umbral y versión.
 8. El frontend representa el resultado y lo compara visualmente con la tasa base del dataset.
 
-La API carga el modelo una vez durante el ciclo de vida del proceso. Las invocaciones calientes reutilizan el objeto en memoria, evitando deserializar aproximadamente 28 MB en cada petición.
+La API carga el modelo una vez durante el ciclo de vida del proceso. Las invocaciones calientes
+reutilizan el objeto en memoria, evitando deserializar el artifact de aproximadamente 2,1 MB en
+cada petición.
 
 ## Justificación de las decisiones principales
 
@@ -132,7 +146,9 @@ La principal desventaja es el cold start causado por Python, scikit-learn y la c
 
 El backend se empaqueta como imagen porque scikit-learn, pandas y el modelo son más fáciles de reproducir en un filesystem controlado que mediante un paquete ZIP ensamblado manualmente. ECR usa tags inmutables y el servicio recibe una URI por digest `sha256`, no `latest`.
 
-ECR es el registro; no es el servidor de aplicación. Lambda obtiene y ejecuta la imagen. EC2 no se usa porque exigiría administrar sistema operativo, parches, disponibilidad, TLS y capacidad aunque no hubiera tráfico.
+ECR es el registro; no es el servidor de aplicación. Lambda obtiene y ejecuta la imagen. EC2 no se
+usa para inferencia porque exigiría administrar sistema operativo, parches, disponibilidad, TLS y
+capacidad aunque no hubiera tráfico; su uso queda limitado a la campaña temporal.
 
 ### API Gateway HTTP API
 
@@ -152,19 +168,27 @@ Git no es apropiado para versionar directamente el CSV y un joblib grande. DVC c
 
 El bucket tiene bloqueo de acceso público, cifrado del lado del servidor, versionado y protección contra destrucción accidental. Las versiones no actuales expiran después del periodo definido para limitar acumulación, sin perder recuperación inmediata.
 
-### MLflow local
+### MLflow en EC2 temporal
 
-MLflow documenta comparaciones de parámetros, métricas y artefactos, pero un servidor gestionado sería desproporcionado para un entrenamiento manual de microproyecto. SQLite ofrece una evidencia reproducible que puede abrirse localmente sin mantener otra carga AWS.
+Un servidor MLflow en EC2 permite registrar todos los experimentos en un punto central durante la
+campaña y usar Model Registry sin entrenar en el equipo local. SQLite se conserva en un volumen EBS
+que no se elimina al terminar la instancia, mientras los artifacts y outputs también se copian a un
+bucket S3 privado, cifrado y versionado.
 
-Esta decisión limita colaboración concurrente y disponibilidad centralizada. Si el equipo necesitara entrenamientos automatizados o múltiples usuarios, el siguiente paso sería mover el backend de MLflow a una base administrada y sus artefactos a S3.
+La instancia `t3.medium` tiene swap acotado, autoapagado a cuatro horas y acceso al puerto 5000
+limitado a un CIDR. Después de capturar o consultar resultados se detiene para no acumular costo.
+El diseño no pretende ser un MLflow multiusuario de producción: para eso serían necesarios TLS,
+autenticación y un backend de base de datos administrado.
 
-### Terraform en tres raíces
+### Terraform en cuatro raíces
 
 La infraestructura se divide para resolver dependencias reales:
 
 1. `bootstrap` crea el bucket de estado utilizando estado local inicial.
-2. `foundation` usa ese backend y crea recursos duraderos: bucket DVC, ECR y rol OIDC.
-3. `service` se aplica solamente después de publicar una imagen y crea Lambda, API Gateway, IAM y CloudWatch.
+2. `foundation` usa ese backend y crea recursos duraderos: bucket DVC, ECR y, cuando la cuenta lo
+   permite, rol OIDC.
+3. `mlflow` crea S3, security group y el runner EC2 que ejecuta y conserva la campaña.
+4. `service` se aplica solamente después de publicar una imagen y crea Lambda, API Gateway, IAM y CloudWatch.
 
 Una sola raíz no puede crear limpiamente Lambda antes de que exista la imagen de ECR. Separar estado y ciclo de vida también permite actualizar o revertir el servicio sin poner en riesgo el bucket DVC.
 
@@ -173,7 +197,8 @@ Una sola raíz no puede crear limpiamente Lambda antes de que exista la imagen d
 ### Identidades
 
 - Los desarrolladores deben usar AWS SSO o perfiles locales.
-- GitHub Actions intercambia un token OIDC por credenciales temporales.
+- GitHub Actions intercambia un token OIDC por credenciales temporales en una cuenta permanente;
+  AWS Academy usa sus credenciales de sesión como secrets renovables.
 - La confianza del rol se restringe al repositorio, la rama principal o el environment configurado.
 - El rol de despliegue se limita al repositorio ECR, objetos DVC, estado y recursos nombrados del servicio.
 - El rol runtime de Lambda solo necesita permisos básicos de logs; no accede a DVC.
@@ -181,6 +206,9 @@ Una sola raíz no puede crear limpiamente Lambda antes de que exista la imagen d
 ### Datos y artefactos
 
 - S3 y ECR permanecen privados.
+- El bucket MLflow bloquea acceso público, exige TLS, cifra objetos y conserva versiones.
+- El UI de MLflow sólo acepta tráfico desde el CIDR configurado y la instancia queda detenida al
+  terminar la campaña.
 - El joblib solo se carga desde el pipeline controlado; cargar pickle/joblib externo permitiría ejecutar código arbitrario.
 - El SHA-256 de metadata se verifica antes de usar el modelo.
 - `.gitignore` excluye CSV, joblib, estado Terraform, archivos `.env`, bases MLflow y PDF del curso.
@@ -214,7 +242,10 @@ La arquitectura escala cada plano de manera independiente:
 - cada proceso Lambda conserva su propia copia del modelo en memoria;
 - S3 y ECR están fuera del camino de una invocación caliente.
 
-El diseño evita EC2, balanceadores y bases de datos permanentemente encendidos. Los principales generadores de costo son almacenamiento/versiones en S3 y ECR, invocaciones y duración de Lambda, API Gateway, logs y cualquier plan contratado en Vercel.
+El diseño evita servidores de inferencia y bases de datos permanentemente encendidos. EC2 se usa
+sólo durante la campaña y se detiene después; sus principales costos son las horas activas, EBS y
+el bucket MLflow. En serving, los generadores de costo son almacenamiento/versiones en S3 y ECR,
+invocaciones y duración de Lambda, API Gateway, logs y cualquier plan contratado en Vercel.
 
 No se configura concurrencia provisionada porque eliminaría parte del ahorro para una demo. Si el cold start importa más que el costo, se puede habilitar después de medir. La solución es regional y no ofrece recuperación multi-región; esa complejidad no se justifica para el microproyecto.
 
@@ -224,7 +255,7 @@ No se configura concurrencia provisionada porque eliminaría parte del ahorro pa
 | --- | --- | --- |
 | Streamlit | Construcción muy rápida de una interfaz de datos | Acopla más la experiencia al runtime Python y no corresponde a la pantalla Next.js solicitada |
 | Frontend Docker en Vercel | Unifica el concepto de contenedor | Añade complejidad sin beneficio para una sola pantalla; el proyecto exige integración GitHub → Vercel |
-| EC2 + Docker Compose | Control total y comportamiento familiar | Requiere servidor permanente, parches, TLS, monitoreo y capacidad manual |
+| EC2 permanente para el API | Control total y latencia predecible | Requiere servidor encendido, parches, TLS, monitoreo y capacidad manual; EC2 se reserva sólo para entrenamiento acotado |
 | ECS/Fargate | Mejor latencia estable para contenedores HTTP | Mayor costo y operación base para tráfico intermitente; queda como plan de migración |
 | Descargar el modelo desde S3 en runtime | Permite cambiar el modelo sin reconstruir imagen | Debilita la inmutabilidad, amplía IAM y añade dependencia de red al arranque |
 | Servir el joblib desde el frontend | Evita una API | Expone el artefacto, no es compatible con scikit-learn en navegador y elimina validación centralizada |
@@ -234,11 +265,18 @@ No se configura concurrencia provisionada porque eliminaría parte del ahorro pa
 
 - `PageValues` aporta gran capacidad predictiva, pero puede no estar disponible temprano en la sesión. Se mantienen métricas de la variante sin esa variable para decidir el momento de scoring.
 - El cold start debe medirse con la imagen real. Una migración a ECS/Fargate conserva FastAPI y el contenedor.
-- MLflow local no es un registro compartido. Puede centralizarse si aparecen más entrenadores o automatización.
+- MLflow usa HTTP y SQLite detrás de un CIDR restringido. Si permanece encendido o incorpora más
+  usuarios, debe añadirse TLS, autenticación y una base administrada.
+- Reiniciar la EC2 asigna una IP pública distinta; Terraform actualiza el output, mientras EBS/S3
+  conservan las corridas.
 - La API pública de demostración carece de autenticación, WAF y cuotas por consumidor. Son requisitos previos para un entorno comercial.
 - Solo existe un entorno `dev` documentado. Producción debería usar estados, dominios, roles y políticas de retención separados.
 - El frontend y la API se despliegan independientemente; cambios incompatibles requieren versionar el contrato bajo una nueva ruta, por ejemplo `/v2`.
 
 ## Resumen de la decisión
 
-La arquitectura optimiza trazabilidad y simplicidad operativa: DVC/S3 versiona datos y modelos, MLflow explica la selección, Docker congela FastAPI junto con el champion, ECR almacena la imagen, Lambda la ejecuta, API Gateway expone HTTPS y Vercel sirve una única pantalla construida directamente desde GitHub. Terraform y OIDC hacen el despliegue reproducible sin credenciales permanentes.
+La arquitectura optimiza trazabilidad y simplicidad operativa: DVC/S3 identifica datos y modelos,
+EC2 ejecuta una campaña acotada, MLflow conserva cada candidato y registra el champion, Docker
+congela FastAPI junto con ese artefacto, ECR almacena la imagen, Lambda la ejecuta, API Gateway
+expone HTTPS y Vercel sirve una pantalla conectada a la metadata real. Terraform reproduce los
+cuatro ciclos de infraestructura y las credenciales permanecen fuera del repositorio.
