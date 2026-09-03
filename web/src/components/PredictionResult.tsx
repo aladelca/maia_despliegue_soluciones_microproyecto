@@ -1,6 +1,6 @@
 import type { PredictionResponse } from "../lib/schemas";
 
-const BASELINE = 0.155;
+const DEFAULT_BASELINE = 0.155;
 const percentage = new Intl.NumberFormat("es-CO", {
   style: "percent",
   minimumFractionDigits: 1,
@@ -9,9 +9,13 @@ const percentage = new Intl.NumberFormat("es-CO", {
 
 type PredictionResultProps = {
   result: PredictionResponse;
+  baselineRate?: number;
 };
 
-export function PredictionResult({ result }: PredictionResultProps) {
+export function PredictionResult({
+  result,
+  baselineRate = DEFAULT_BASELINE,
+}: PredictionResultProps) {
   const title = result.will_purchase ? "Compra probable" : "Compra poco probable";
 
   return (
@@ -31,9 +35,9 @@ export function PredictionResult({ result }: PredictionResultProps) {
           </div>
         </div>
         <div className="bar-row">
-          <span>Tasa base 15.5%</span>
+          <span>Tasa base {percentage.format(baselineRate)}</span>
           <div className="bar-track">
-            <span className="bar-fill baseline" style={{ width: `${BASELINE * 100}%` }} />
+            <span className="bar-fill baseline" style={{ width: `${baselineRate * 100}%` }} />
           </div>
         </div>
       </div>

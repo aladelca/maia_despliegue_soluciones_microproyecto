@@ -1,10 +1,25 @@
 import {
+  type ModelMetadata,
   type PredictionResponse,
   type SessionFeatures,
+  modelMetadataSchema,
   predictionResponseSchema,
 } from "./schemas";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const PRODUCTION_API_BASE_URL = "https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (process.env.NODE_ENV === "production" ? PRODUCTION_API_BASE_URL : "http://localhost:8000");
+
+export async function getModelMetadata(): Promise<ModelMetadata> {
+  const response = await fetch(`${API_BASE_URL}/v1/model/metadata`, {
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Metadata API returned ${response.status}`);
+  }
+  return modelMetadataSchema.parse(await response.json());
+}
 
 export async function predictPurchase(
   features: SessionFeatures,

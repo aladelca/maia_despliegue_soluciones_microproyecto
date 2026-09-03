@@ -1,4 +1,4 @@
-import { PredictionForm } from "../components/PredictionForm";
+import { PredictionDashboard } from "../components/PredictionDashboard";
 
 export default function Home() {
   return (
@@ -12,7 +12,7 @@ export default function Home() {
         </p>
       </header>
 
-      <PredictionForm />
+      <PredictionDashboard />
 
       <footer>
         Esta predicción es orientativa y no demuestra que una variable o intervención cause la
