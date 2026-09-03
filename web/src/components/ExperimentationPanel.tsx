@@ -11,7 +11,6 @@ function metric(metrics: Record<string, unknown>, key: string): number | null {
   const value = metrics[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-
 type ExperimentationPanelProps = {
   metadata?: ModelMetadata;
   isLoading: boolean;
@@ -115,4 +114,3 @@ export function ExperimentationPanel({ metadata, isLoading }: ExperimentationPan
     </section>
   );
 }
-

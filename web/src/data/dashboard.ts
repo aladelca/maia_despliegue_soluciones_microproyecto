@@ -19,7 +19,6 @@ export const monthlyConversion = [
   { label: "Nov", value: 0.25350233488992663 },
   { label: "Dic", value: 0.1250723798494499 },
 ] as const;
-
 export const visitorConversion = [
   { label: "Nuevo", value: 0.24911452184179456 },
   { label: "Otro", value: 0.18823529411764706 },
@@ -114,4 +113,3 @@ export const topCandidates = [
     durationSeconds: 18.82720137199999,
   },
 ] as const;
-

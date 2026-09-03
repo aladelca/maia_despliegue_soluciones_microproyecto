@@ -53,4 +53,3 @@ export function PredictionHistory({ items, onClear }: PredictionHistoryProps) {
     </section>
   );
 }
-
