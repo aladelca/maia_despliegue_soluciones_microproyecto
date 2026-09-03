@@ -3,20 +3,20 @@
 ## Resultado desplegado
 
 - API Gateway: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>
-- Frontend Vercel conectado a GitHub, preview actual protegido por login:
-  <https://maia-despliegue-soluci-git-e02deb-alarconadrianc-7868s-projects.vercel.app>
+- Frontend Vercel público conectado a GitHub:
+  <https://maia-despliegue-soluciones-micropro.vercel.app>
 - Frontend temporal usado en la validación E2E original (expirado):
   <https://temporary-quick-indigo-ntrfzf9.vercel.app>
 - Pull request: <https://github.com/aladelca/maia_despliegue_soluciones_microproyecto/pull/6>
 - Lambda: `online-shoppers-ml-dev-api`
-- Imagen ECR inmutable: `sha256:6c7fcdd5b57655951e82cea1f9d5df9b4e5435a649b78f96841a0157830a8044`
+- Imagen ECR inmutable: `sha256:34cbdebdeb010b349098009e4f40d44d844f9380b252b91003e4fbd984ec99b9`
 - Commit ejecutado por la campaña: `cb1a3433c1b509c695147cd56c81d325e77ca436`
 - Dataset DVC: `md5:cc6ec1db03b4f10f8de52c56ff48b085`
 
 El deployment temporal fue validado extremo a extremo antes de expirar. Después se conectó el
-repositorio al proyecto Vercel con Root Directory `web`; el check del PR terminó en `Ready`, pero
-su preview requiere autenticación del equipo. El dominio público de producción se obtiene al
-fusionar y desplegar `main`. CORS debe actualizarse con ese origin exacto antes del smoke final.
+repositorio al proyecto Vercel con Root Directory `web`, se publicó el alias estable de producción
+y se restringió CORS a ese origin exacto. Los URLs de deployment y rama permanecen protegidos por
+autenticación de Vercel; el enlace anterior es el punto de entrada público.
 
 ## Campaña EC2 y MLflow
 
@@ -48,7 +48,7 @@ Al reiniciarla, Terraform conserva el backend y MLflow vuelve a exponer los mism
 ## Validaciones ejecutadas
 
 - `58` tests Python aprobados; Ruff del alcance nuevo y mypy sin hallazgos.
-- `7` tests web aprobados; ESLint, TypeScript y build de producción aprobados.
+- `9` tests web aprobados; ESLint, TypeScript y build de producción aprobados.
 - Notebook canónico ejecutado con `nbconvert` sobre los resultados reales.
 - Terraform MLflow y service validados; los applies fueron sólo adiciones o actualizaciones in-place,
   sin destrucciones.
