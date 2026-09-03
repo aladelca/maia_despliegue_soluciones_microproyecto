@@ -48,7 +48,7 @@ Al reiniciarla, Terraform conserva el backend y MLflow vuelve a exponer los mism
 ## Validaciones ejecutadas
 
 - `58` tests Python aprobados; Ruff del alcance nuevo y mypy sin hallazgos.
-- `9` tests web aprobados; ESLint, TypeScript y build de producción aprobados.
+- `10` tests web aprobados; ESLint, TypeScript y build de producción aprobados.
 - Notebook canónico ejecutado con `nbconvert` sobre los resultados reales.
 - Terraform MLflow y service validados; los applies fueron sólo adiciones o actualizaciones in-place,
   sin destrucciones.

@@ -21,6 +21,7 @@ type NumberField = {
   name: keyof SessionFeatures;
   label: string;
   defaultValue: number;
+  min?: number;
   step?: number;
   max?: number;
 };
@@ -39,10 +40,10 @@ const behaviorFields: NumberField[] = [
 ];
 
 const categoryFields: NumberField[] = [
-  { name: "OperatingSystems", label: "Sistema operativo (código)", defaultValue: 2 },
-  { name: "Browser", label: "Navegador (código)", defaultValue: 2 },
-  { name: "Region", label: "Región (código)", defaultValue: 3 },
-  { name: "TrafficType", label: "Fuente de tráfico (código)", defaultValue: 2 },
+  { name: "OperatingSystems", label: "Sistema operativo (código)", defaultValue: 2, min: 1 },
+  { name: "Browser", label: "Navegador (código)", defaultValue: 2, min: 1 },
+  { name: "Region", label: "Región (código)", defaultValue: 3, min: 1 },
+  { name: "TrafficType", label: "Fuente de tráfico (código)", defaultValue: 2, min: 1 },
 ];
 
 function NumberInput({ field }: { field: NumberField }) {
@@ -53,7 +54,7 @@ function NumberInput({ field }: { field: NumberField }) {
         name={field.name}
         type="number"
         defaultValue={field.defaultValue}
-        min={0}
+        min={field.min ?? 0}
         max={field.max}
         step={field.step ?? 1}
         required
