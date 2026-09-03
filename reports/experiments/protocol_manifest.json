@@ -1,0 +1,16 @@
+{
+  "audit_strategy": "first_stratified_group_fold_of_5",
+  "audit_test_groups": 2439,
+  "audit_test_rows": 2466,
+  "cv_strategy": "StratifiedGroupKFold(5)",
+  "data_version": "md5:cc6ec1db03b4f10f8de52c56ff48b085",
+  "dataset_rows": 12330,
+  "development_groups": 9766,
+  "development_rows": 9864,
+  "git_revision": "feature/implement-ec2-mlflow-experimentation-and-deploy",
+  "profile": "full",
+  "random_seed": 42,
+  "selection_metric": "cv_pr_auc_mean",
+  "source_commit": "cb1a3433c1b509c695147cd56c81d325e77ca436",
+  "threshold_metric": "oof_f1"
+}
