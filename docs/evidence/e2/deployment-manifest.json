@@ -6,7 +6,9 @@
   },
   "frontend": {
     "claim_required": true,
+    "current_status": "expired",
     "deployment_mode": "temporary",
+    "evidence_scope": "historical_end_to_end_validation",
     "url": "https://temporary-quick-indigo-ntrfzf9.vercel.app"
   },
   "mlflow": {

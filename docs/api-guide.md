@@ -16,6 +16,12 @@ http://localhost:8000
 
 Después del despliegue, sustituya esa dirección por el output `api_base_url` de Terraform. Los paths y contratos permanecen iguales.
 
+La instancia documentada de Entrega 2 responde en:
+
+```text
+https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com
+```
+
 La documentación interactiva de FastAPI está disponible en:
 
 ```text
@@ -37,7 +43,7 @@ Respuesta saludable:
 ```json
 {
   "status": "ok",
-  "model_version": "ebb000d"
+  "model_version": "feature/implement-ec2-mlflow-experimentation-and-deploy-315cd8d3"
 }
 ```
 
@@ -49,7 +55,11 @@ Respuesta saludable:
 curl --fail http://localhost:8000/v1/model/metadata
 ```
 
-Este endpoint devuelve la versión, el umbral, las variables esperadas, el nombre del champion y sus métricas de validación y test. Es útil para comprobar qué modelo atiende una instancia sin descargar el artefacto binario.
+Este endpoint devuelve la versión, el umbral, las variables esperadas, el nombre del champion,
+feature set, uso de `PageValues`, tasa base, versión DVC, run/experimento MLflow y métricas de
+validación y audit. Es útil para comprobar qué modelo atiende una instancia sin descargar el
+artefacto binario. En el deployment actual, `mlflow_run_id` es
+`315cd8d316ba47a899f6ba249cc721d9`.
 
 ## Generar una predicción con curl
 
@@ -83,9 +93,9 @@ Ejemplo de respuesta:
 ```json
 {
   "will_purchase": true,
-  "purchase_probability": 0.7013437336783158,
-  "threshold": 0.6023926908169313,
-  "model_version": "ebb000d"
+  "purchase_probability": 0.884808,
+  "threshold": 0.5673544537449113,
+  "model_version": "feature/implement-ec2-mlflow-experimentation-and-deploy-315cd8d3"
 }
 ```
 
@@ -100,7 +110,9 @@ Los valores son ilustrativos y pueden cambiar cuando se publique otra versión d
 | `will_purchase` | `true` cuando la probabilidad es mayor o igual al umbral; de lo contrario, `false` |
 | `model_version` | Identificador del artefacto que produjo la respuesta |
 
-La probabilidad no es una garantía ni una explicación causal. El umbral no es necesariamente 0.5 porque fue optimizado por F1 sobre validación. Para auditoría o comparación, almacene siempre la probabilidad, el umbral y la versión, no solamente el booleano.
+La probabilidad no es una garantía ni una explicación causal. El umbral no es necesariamente 0.5
+porque fue optimizado por F1 sobre las predicciones out-of-fold de desarrollo. Para auditoría o
+comparación, almacene siempre la probabilidad, el umbral y la versión, no solamente el booleano.
 
 ## Variables de entrada
 
@@ -158,7 +170,7 @@ session = {
 response = httpx.post(
     "http://localhost:8000/v1/predict",
     json=session,
-    timeout=10.0,
+    timeout=29.0,
 )
 response.raise_for_status()
 prediction = response.json()
@@ -187,6 +199,10 @@ El servicio no pudo cargar o validar el modelo. Consulte `/health`, revise las v
 ### Error CORS desde el navegador
 
 Las llamadas con curl o Python no usan CORS. Si el error aparece únicamente en el navegador, configure `ALLOWED_ORIGIN` con el origen exacto del frontend y vuelva a desplegar o reiniciar la API.
+
+El origin no incluye path ni `/` final. Cada dominio nuevo de Vercel requiere actualizar la
+variable Terraform/GitHub y volver a aplicar `service`. El navegador usa un timeout de 29 segundos
+para dejar margen al cold start dentro del límite de 30 segundos de API Gateway.
 
 ### HTTP 405 — método incorrecto
 

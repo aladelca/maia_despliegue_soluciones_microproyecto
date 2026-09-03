@@ -1,83 +1,223 @@
 # Instalación y despliegue
 
-El orden evita dependencias circulares. El entorno de laboratorio mantiene el estado Terraform y el remoto DVC en buckets separados.
+## Orden de despliegue
 
-## 1. Bootstrap de estado
+La solución tiene cuatro estados Terraform y dos planos de ejecución independientes:
 
-    terraform -chdir=infra/terraform/bootstrap init
-    terraform -chdir=infra/terraform/bootstrap apply \
-      -var='owner=<owner>' \
-      -var='state_bucket_name=<nombre-global-unico>'
+```text
+bootstrap -> foundation/DVC -> mlflow/EC2 -> promoción del champion
+                                             |
+                                             v
+                                      ECR -> service/API
+                                             |
+                                             v
+                                           Vercel
+                                             |
+                                             v
+                                     actualización de CORS
+```
 
-## 2. Foundation
+El frontend puede construirse antes del API porque obtiene la metadata en el navegador, pero no
+podrá consultar ni predecir hasta que API Gateway permita su origen exacto.
 
-Copie los archivos example y complete valores no secretos. Inicialice el backend parcial y aplique S3 DVC, ECR y GitHub OIDC:
+## Prerrequisitos
 
-    terraform -chdir=infra/terraform/foundation init \
-      -backend-config=../environments/dev/foundation.tfbackend
-    terraform -chdir=infra/terraform/foundation plan -var-file=../environments/dev/foundation.tfvars
-    terraform -chdir=infra/terraform/foundation apply -var-file=../environments/dev/foundation.tfvars
+- AWS CLI autenticado en la cuenta correcta y región `us-east-1`.
+- Terraform 1.10 o superior, `uv`, GitHub CLI, Docker y Node.js 24.
+- Un instance profile EC2 con acceso a S3 y SSM; en AWS Academy suele llamarse
+  `LabInstanceProfile`.
+- Un rol Lambda existente, como `LabRole`, cuando la cuenta no permite crear IAM.
+- Dataset publicado en el remoto DVC/S3.
+- Acceso al repositorio desde Vercel.
 
-Compruebe el remoto versionado siguiendo `docs/dvc-s3.md` y ejecute `dvc push`.
+Use credenciales temporales mediante variables de entorno, perfil AWS u OIDC. Nunca confirme
+`.env`, `*.tfvars`, `*.tfbackend`, state, CSV, joblib o credenciales.
 
-Copie el output `github_deploy_role_arn` al secreto de entorno `AWS_DEPLOY_ROLE_ARN` de GitHub. Configure también las variables `AWS_REGION`, `TERRAFORM_STATE_BUCKET`, `OWNER`, `ALLOWED_ORIGIN` y, si cambia el nombre por defecto, `ECR_REPOSITORY`. La URL del remoto DVC no es un secreto: está versionada en `.dvc/config`. El rol confía en el environment `dev` y dispone únicamente de las operaciones necesarias sobre el bucket de estado, ECR y los recursos nombrados del servicio.
+## 1. Bootstrap y foundation
 
-El workflow `Deploy API` se ejecuta manualmente desde GitHub Actions. Se mantiene en modo `workflow_dispatch` mientras Phase 6 esté pendiente para impedir despliegues fallidos o creación involuntaria de recursos al fusionar en `main`. Después de configurar y verificar AWS, DVC y el environment `dev`, el equipo puede habilitar un trigger automático protegido.
+`bootstrap` crea el bucket del backend desde estado local. `foundation` usa ese backend para crear
+el bucket DVC y ECR. La receta completa, incluidos los comandos de recuperación del state en un
+clon nuevo, está en [Reproducir la solución completa](../README.md#reproducir-la-solución-completa).
 
-### Variante para AWS Academy `voclabs`
+Para AWS Academy, deshabilite recursos OIDC y reutilice los roles del laboratorio:
 
-El rol temporal del laboratorio puede administrar S3, ECR, Lambda y API Gateway, pero no crear IAM/OIDC. Cargue `.env`; ese archivo ignorado por Git contiene los nombres reales del backend, del remoto y de `LabRole`:
+```bash
+terraform -chdir=infra/terraform/foundation apply \
+  -var="owner=$CLOUD_OWNER" \
+  -var="dvc_bucket_name=$DVC_S3_BUCKET" \
+  -var="terraform_state_bucket_name=$TF_STATE_BUCKET" \
+  -var='github_owner=aladelca' \
+  -var='github_repository=maia_despliegue_soluciones_microproyecto' \
+  -var='enable_deployment_resources=true' \
+  -var='enable_github_oidc_resources=false'
+```
 
-    set -a
-    source .env
-    set +a
-    aws sts get-caller-identity
-    : "${TF_STATE_BUCKET:?Falta TF_STATE_BUCKET en .env}"
-    : "${LAB_ROLE_ARN:?Falta LAB_ROLE_ARN en .env}"
+En una cuenta permanente puede habilitar OIDC y entregar a GitHub el output
+`github_deploy_role_arn`, sin guardar access keys.
 
-    aws s3 cp infra/terraform/bootstrap/terraform.tfstate \
-      "s3://$TF_STATE_BUCKET/online-shoppers/dev/bootstrap.tfstate"
+## 2. Campaña EC2/MLflow
 
-    terraform -chdir=infra/terraform/foundation init -reconfigure \
-      -backend-config="bucket=$TF_STATE_BUCKET" \
-      -backend-config="key=$TF_FOUNDATION_STATE_KEY" \
-      -backend-config="region=$CLOUD_AWS_REGION" \
-      -backend-config='use_lockfile=true' \
-      -backend-config='encrypt=true'
+Copie y complete los ejemplos ignorados por Git:
 
-    terraform -chdir=infra/terraform/foundation apply \
-      -var="owner=$CLOUD_OWNER" \
-      -var="dvc_bucket_name=$DVC_S3_BUCKET" \
-      -var="terraform_state_bucket_name=$TF_STATE_BUCKET" \
-      -var='github_owner=aladelca' \
-      -var='github_repository=maia_despliegue_soluciones_microproyecto' \
-      -var='enable_deployment_resources=true' \
-      -var='enable_github_oidc_resources=false'
+```bash
+cp infra/terraform/environments/dev/mlflow.example.tfbackend \
+  infra/terraform/environments/dev/mlflow.tfbackend
+cp infra/terraform/environments/dev/mlflow.example.tfvars \
+  infra/terraform/environments/dev/mlflow.tfvars
+terraform -chdir=infra/terraform/mlflow init -reconfigure \
+  -backend-config=../environments/dev/mlflow.tfbackend
+terraform -chdir=infra/terraform/mlflow plan \
+  -var-file=../environments/dev/mlflow.tfvars \
+  -out=/tmp/online-shoppers-mlflow.tfplan
+terraform -chdir=infra/terraform/mlflow apply /tmp/online-shoppers-mlflow.tfplan
+```
 
-Esta combinación administra DVC y ECR, pero devuelve `null` para el rol OIDC de GitHub Actions. En `voclabs`, guarde `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN` como repository secrets de GitHub. El workflow pasa `LAMBDA_EXECUTION_ROLE_ARN` al servicio para reutilizar `LabRole` sin crear IAM. Los secrets deben actualizarse cada vez que expira o se reinicia la sesión del laboratorio.
+El apply crea un bucket de artifacts, security group y una EC2 `t3.medium`. El bootstrap de la
+instancia:
 
-El stack `bootstrap` usa estado local porque crea el propio backend. Después de su primer `apply`, guarde la copia indicada en el bucket versionado. Antes de modificar el bootstrap desde otra máquina, recupérela así:
+1. habilita Docker y 4 GiB de swap;
+2. programa autoapagado a cuatro horas;
+3. clona `repository_url` en `git_ref` y registra el SHA resuelto;
+4. inicia MLflow 3.15.1 con SQLite en EBS y artifacts en S3;
+5. descarga el objeto DVC indicado por `dvc_dataset_s3_uri`;
+6. construye el contenedor CPU-only y ejecuta el perfil `full`;
+7. sincroniza outputs y status a `s3://<bucket>/campaign-output/<git-ref>/`.
 
-    aws s3 cp \
-      "s3://$TF_STATE_BUCKET/online-shoppers/dev/bootstrap.tfstate" \
-      infra/terraform/bootstrap/terraform.tfstate
+Monitoree sin abrir SSH:
 
-## 3. Imagen y service
+```bash
+INSTANCE_ID=$(terraform -chdir=infra/terraform/mlflow output -raw instance_id)
+ARTIFACT_BUCKET=$(terraform -chdir=infra/terraform/mlflow output -raw artifact_bucket_name)
+terraform -chdir=infra/terraform/mlflow output -raw mlflow_url
+aws ssm start-session \
+  --target "$INSTANCE_ID" \
+  --document-name AWS-StartInteractiveCommand \
+  --parameters 'command=["sudo tail -f /var/log/online-shoppers-bootstrap.log"]'
+aws s3 cp "s3://$ARTIFACT_BUCKET/campaign-output/<git-ref>/status" -
+```
 
-El workflow `.github/workflows/deploy-api.yml` obtiene el modelo desde DVC/S3, construye la imagen `linux/amd64`, publica un tag igual al Git SHA y resuelve su digest. `service` exige una URI con `@sha256` y rechaza `latest`. En `voclabs` se ejecuta con repository secrets temporales; en una cuenta permanente se recomienda OIDC.
+No despliegue un resultado cuyo status no sea `success`. El runner tiene `prevent_destroy`; se
+detiene, no se termina, después de descargar los artifacts.
 
-    gh workflow run deploy-api.yml --ref feature/implement-dvc-remote-on-amazon-s3
-    gh run list --workflow deploy-api.yml --limit 5
+El `user_data` se ejecuta al crear la instancia, no cada vez que se inicia. Para una campaña nueva,
+cree un state/backend key y un bucket de artifacts distintos —y use otro `environment`— o ejecute
+el contenedor explícitamente mediante SSM. Cambiar sólo `git_ref` sobre la EC2 existente no repite
+`cloud-init`.
 
-Revise costos y el plan antes de apply. Después valide /health y /v1/predict.
+## 3. Promoción del modelo
 
-## 4. Vercel
+Sincronice el prefijo de campaña, verifique `failures == []`, copie joblib/metadata/reportes y
+publique el binario con DVC. Los comandos completos están en el paso 7 del README. El commit de
+promoción debe incluir al menos:
 
-Conecte el repositorio GitHub desde el dashboard de Vercel, seleccione `web` como Root Directory y deje que Vercel detecte Next.js. Configure `NEXT_PUBLIC_API_BASE_URL` con la URL de API Gateway para Preview y Production. Cada push o pull request se construirá desde GitHub; el frontend no usa Docker. Actualice `allowed_origin` en Terraform con el dominio definitivo.
+```bash
+git add \
+  models/champion.joblib.dvc \
+  models/model_metadata.json \
+  reports/model_metrics.json \
+  reports/experiments/final_model_comparison.json \
+  reports/experiments/protocol_manifest.json
+git commit -m "feat(model): promote EC2 MLflow champion"
+git push
+```
 
-## Rollback
+`models/champion.joblib` no se agrega a Git. Antes del commit, `dvc push` debe haber almacenado el
+objeto señalado por el nuevo pointer.
 
-- API: reaplique service con el digest anterior.
-- Frontend: promueva el deployment Vercel anterior.
-- Modelo/datos: cambie al commit que referencia la versión DVC y ejecute dvc pull.
-- Nunca destruya los buckets protegidos como parte de un rollback.
+## 4. Imagen, Lambda y API Gateway
+
+El workflow `.github/workflows/deploy-api.yml`:
+
+1. obtiene el modelo exacto con `dvc pull`;
+2. ejecuta pruebas de integración;
+3. construye `docker/api.Dockerfile` para `linux/amd64` sin provenance OCI adicional;
+4. publica un tag inmutable igual al Git SHA y resuelve el digest;
+5. actualiza Lambda in-place mediante el stack `service`;
+6. prueba `/health`.
+
+Configure GitHub en AWS Academy:
+
+```bash
+gh secret set AWS_ACCESS_KEY_ID
+gh secret set AWS_SECRET_ACCESS_KEY
+gh secret set AWS_SESSION_TOKEN
+gh variable set AWS_REGION --body us-east-1
+gh variable set TERRAFORM_STATE_BUCKET --body <bucket-state>
+gh variable set OWNER --body <owner>
+gh variable set ECR_REPOSITORY --body online-shoppers-ml-api
+gh variable set LAMBDA_EXECUTION_ROLE_ARN --body <arn-lab-role>
+gh variable set ALLOWED_ORIGIN --body http://localhost:3000
+gh workflow run deploy-api.yml --ref main
+```
+
+Los tres secrets de sesión deben renovarse cuando AWS Academy expire. En una cuenta con OIDC, no
+se configuran access keys.
+
+Recupere y pruebe el endpoint:
+
+```bash
+API_URL=$(aws apigatewayv2 get-apis \
+  --region us-east-1 \
+  --query "Items[?Name=='online-shoppers-ml-dev'].ApiEndpoint | [0]" \
+  --output text)
+curl --fail --retry 5 --retry-delay 5 "$API_URL/health"
+curl --fail "$API_URL/v1/model/metadata"
+```
+
+El servicio actual usa 2048 MB, timeout Lambda de 30 segundos y timeout de integración de 30
+segundos. El frontend espera hasta 29 segundos para tolerar el cold start observado; una llamada
+caliente debe ser sub-segundo.
+
+## 5. Vercel
+
+Importe `main` desde GitHub con esta configuración:
+
+| Configuración | Valor |
+| --- | --- |
+| Project Name | `maia-online-shoppers-web` o cualquier slug disponible |
+| Framework Preset | `Next.js` |
+| Root Directory | `web` |
+| Install Command | `pnpm install --frozen-lockfile` |
+| Build Command | `pnpm build` |
+| Output Directory | `.next` |
+| Environment Variable | `NEXT_PUBLIC_API_BASE_URL=https://<api-id>.execute-api.us-east-1.amazonaws.com` |
+
+Configure la variable para Preview y Production. No seleccione FastAPI: Python se ejecuta en AWS,
+no en Vercel. Ignore las variables sugeridas desde `.env.example` raíz y no copie credenciales AWS.
+
+Una vez Vercel entregue el dominio definitivo, actualice CORS y redespliegue el servicio:
+
+```bash
+VERCEL_ORIGIN=https://<proyecto>.vercel.app
+gh variable set ALLOWED_ORIGIN --body "$VERCEL_ORIGIN"
+gh workflow run deploy-api.yml --ref main
+```
+
+El valor debe ser el origin exacto, sin path ni `/` final. Si cambia el dominio de producción,
+repita el update. El frontend incorpora `NEXT_PUBLIC_*` en build time, así que también necesita un
+redeploy si cambia `API_URL`.
+
+## 6. Verificación final
+
+```bash
+curl --fail "$API_URL/health"
+curl --fail "$API_URL/v1/model/metadata"
+curl --fail -X OPTIONS "$API_URL/v1/predict" \
+  -H "Origin: $VERCEL_ORIGIN" \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type' \
+  -D - -o /dev/null
+```
+
+Además de HTTP 200, confirme en el navegador que el panel muestre champion, run ID, hash DVC,
+PR-AUC CV/audit y umbral, y que una predicción devuelva la misma `model_version` de `/health`.
+
+## Operación y rollback
+
+- **MLflow:** inicie la EC2 existente para consultar runs; la nueva IP aparece en
+  `terraform output mlflow_url`. Deténgala al terminar. No use `terraform destroy` sobre los
+  recursos protegidos.
+- **API:** reaplique `service` con el digest ECR anterior.
+- **Frontend:** promueva un deployment Vercel anterior.
+- **Modelo/datos:** cambie al commit con el pointer DVC deseado y ejecute `dvc pull`.
+- **CORS:** cada dominio Vercel nuevo requiere aplicar `allowed_origin` y un smoke preflight.

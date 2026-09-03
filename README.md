@@ -4,32 +4,82 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 
 ## Arquitectura
 
-- Entrenamiento bajo demanda desde notebooks; la lógica reutilizable vive en src/online_shoppers.
+- Campaña reproducible en una instancia EC2 temporal; la lógica reutilizable vive en
+  `src/online_shoppers` y el notebook canónico en `notebook/` consume sus resultados.
 - Dataset y champion versionados con DVC en un bucket S3 privado administrado por Terraform.
-- Experimentos registrados en MLflow local.
-- FastAPI adaptada a Lambda mediante Mangum y empaquetada como imagen ECR.
-- API Gateway expone HTTPS; Next.js se despliega en Vercel.
-- Terraform declara y administra los recursos AWS del proyecto.
+- MLflow se ejecuta en EC2, persiste su backend SQLite en EBS y guarda artefactos y resultados
+  de campaña en un segundo bucket S3 privado.
+- FastAPI se adapta a Lambda mediante Mangum y se empaqueta, junto con el champion, como una
+  imagen inmutable de ECR.
+- API Gateway expone HTTPS; Next.js se construye desde `web/` y se despliega en Vercel.
+- Terraform separa los ciclos de vida de `bootstrap`, `foundation`, `mlflow` y `service`.
 
-## Ejecución en AWS desde cero
+## Cambios de la Entrega 2
 
-Esta ruta crea o recupera la infraestructura con Terraform y delega a GitHub
-Actions la descarga DVC, las pruebas, el build Docker, el push a ECR y la
-actualización de Lambda. No requiere EC2 ni Docker local. Se asume que los
-objetos señalados por los archivos `.dvc` ya existen en el remoto S3; más abajo
-se valida esa precondición sin descargarlos al equipo.
+- Feature engineering dentro del pipeline para evitar leakage: agregados de duración y páginas,
+  ratios de engagement, transformaciones logarítmicas, estacionalidad, tráfico infrecuente e
+  interacciones de visitante/fin de semana.
+- Comparación de 66 configuraciones: dummy, regresión logística, Random Forest, Extra Trees,
+  HistGradientBoosting, CatBoost, XGBoost, LightGBM y MLP de PyTorch; cada candidato se registra
+  como un child run de MLflow.
+- Separación por sesiones duplicadas mediante `StratifiedGroupKFold`: un audit set sellado y
+  cinco folds para selección por PR-AUC. El umbral se elige únicamente con predicciones OOF.
+- Registro del ganador en MLflow Model Registry como
+  `online-shoppers-purchase-intention`, versión `1`, alias `champion`.
+- Promoción del CatBoost ganador a DVC/S3 y despliegue por digest OCI inmutable en Lambda.
+- Endpoint `/v1/model/metadata` y tablero Next.js conectado a metadata y predicciones reales.
+- Terraform para EC2/MLflow/S3, protección contra destrucción, autoapagado y acceso al puerto
+  5000 restringido a un CIDR confiable.
 
-### 1. Instalar herramientas
+Resultado de la campaña versionada:
+
+| Resultado | Valor |
+| --- | --- |
+| Candidatos terminados | 66 de 66 |
+| Champion | `catboost__engineered_with_page_values__depth_8_lr_0.03_l2_5` |
+| PR-AUC CV | `0.7562 ± 0.0225` |
+| F1 OOF | `0.6905` |
+| PR-AUC audit | `0.7368` |
+| F1 audit | `0.6636` |
+| Umbral | `0.5674` |
+
+Estado operativo documentado:
+
+- API Gateway/Lambda: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>.
+- EC2 de MLflow: detenida después de la campaña; EBS y S3 conservan los runs.
+- Vercel: el preview usado como evidencia expiró; el deployment persistente debe crearse con la
+  configuración del paso 10 y su nuevo dominio debe agregarse a CORS.
+
+Consulte la [arquitectura](docs/architecture.md), la
+[guía de experimentación](docs/experimentation.md), la
+[guía de despliegue](docs/deployment.md) y la
+[evidencia técnica](docs/evidence/e2/README.md) para el detalle.
+
+## Reproducir la solución completa
+
+Los comandos siguientes reconstruyen la infraestructura, ejecutan la campaña en EC2, recuperan
+el champion trazable, despliegan el API en AWS y conectan un proyecto Vercel. Ejecútelos desde la
+raíz de un clon limpio. Los nombres globales de buckets deben sustituirse por valores disponibles
+en la cuenta que se use.
+
+### 1. Instalar herramientas y dependencias
 
 Se necesita Git, AWS CLI, Terraform y, para controlar Actions desde terminal,
 GitHub CLI. En macOS con Homebrew:
 
-    brew install awscli gh
+    brew install awscli gh uv node
     brew tap hashicorp/tap
     brew install hashicorp/tap/terraform
     aws --version
     terraform version
     gh --version
+
+Instale las dependencias bloqueadas y valide el checkout antes de crear recursos:
+
+    uv sync --all-groups --locked
+    npx --yes pnpm@11.21.0 --dir web install --frozen-lockfile
+    uv run pytest -q
+    npx --yes pnpm@11.21.0 --dir web test
 
 El proyecto requiere Terraform 1.10 o superior y CI usa 1.15.8. Para instalar
 exactamente esa versión en un Mac Apple Silicon sin Homebrew:
@@ -81,8 +131,9 @@ DVC ni Git. Después cargue y valide todo:
     aws sts get-caller-identity
     aws iam get-role --role-name LabRole --query 'Role.Arn' --output text
 
-La identidad debe pertenecer a la cuenta `712986489191` y mostrar un ARN
-`assumed-role/voclabs/...`.
+En AWS Academy la identidad normalmente muestra un ARN `assumed-role/voclabs/...`. En otra cuenta,
+ajuste nombres, roles y variables de acuerdo con sus políticas. Las credenciales temporales nunca
+se pasan como variables Terraform ni se guardan en archivos versionados.
 
 ### 3. Crear o recuperar el backend Terraform
 
@@ -136,25 +187,149 @@ se deshabilitan solamente los recursos OIDC de GitHub:
       /tmp/online-shoppers-foundation.tfplan
     terraform -chdir=infra/terraform/foundation output
 
-### 5. Verificar los objetos DVC sin descargarlos
+### 5. Publicar y resolver la versión exacta del dataset
 
-Construya las keys content-addressed a partir de los punteros versionados y
-confirme que S3 contiene ambos artefactos:
+Materialice el CSV con `dvc pull` o publíquelo una vez con `dvc push`. Después construya la URI
+content-addressed que usará EC2; no se entrega a la campaña una ruta mutable:
 
-    MODEL_HASH=$(awk '$2 == "md5:" { print $3 }' models/champion.joblib.dvc)
     DATA_HASH=$(awk '$2 == "md5:" { print $3 }' \
       data/raw/online_shoppers_intention.csv.dvc)
-    test -n "$MODEL_HASH" && test -n "$DATA_HASH"
-    MODEL_KEY="$DVC_S3_PREFIX/files/md5/$(printf %s "$MODEL_HASH" | cut -c1-2)/$(printf %s "$MODEL_HASH" | cut -c3-)"
+    test -n "$DATA_HASH"
     DATA_KEY="$DVC_S3_PREFIX/files/md5/$(printf %s "$DATA_HASH" | cut -c1-2)/$(printf %s "$DATA_HASH" | cut -c3-)"
-    aws s3api head-object --bucket "$DVC_S3_BUCKET" --key "$MODEL_KEY"
     aws s3api head-object --bucket "$DVC_S3_BUCKET" --key "$DATA_KEY"
+    export DVC_DATA_VERSION="md5:$DATA_HASH"
+    export DVC_DATASET_S3_URI="s3://$DVC_S3_BUCKET/$DATA_KEY"
 
-Si alguno no existe, el workflow se detendrá en `dvc pull`. Un responsable que
-tenga los artefactos materializados debe ejecutar `uv run dvc push` antes de
-continuar.
+Si `head-object` falla, un responsable que tenga el CSV materializado debe ejecutar:
 
-### 6. Configurar GitHub
+    uv run dvc add data/raw/online_shoppers_intention.csv
+    uv run dvc push data/raw/online_shoppers_intention.csv.dvc
+
+### 6. Ejecutar la campaña EC2/MLflow
+
+La cuenta debe ofrecer un instance profile con lectura/escritura S3 y acceso SSM; AWS Academy
+incluye normalmente `LabInstanceProfile`. Copie los ejemplos a archivos ignorados por Git:
+
+    cp infra/terraform/environments/dev/mlflow.example.tfbackend \
+      infra/terraform/environments/dev/mlflow.tfbackend
+    cp infra/terraform/environments/dev/mlflow.example.tfvars \
+      infra/terraform/environments/dev/mlflow.tfvars
+
+Complete ambos archivos. En `mlflow.tfvars` use:
+
+- un bucket globalmente único para `artifact_bucket_name`;
+- `dvc_dataset_s3_uri` igual a `$DVC_DATASET_S3_URI`;
+- `dvc_data_version` igual a `$DVC_DATA_VERSION`;
+- la URL HTTPS pública del repositorio y una rama o tag existente en `git_ref`;
+- su IP pública seguida de `/32` en `allowed_cidr`;
+- el instance profile autorizado en `instance_profile_name`.
+
+Inicialice, revise el plan y aplíquelo:
+
+    terraform -chdir=infra/terraform/mlflow init -reconfigure \
+      -backend-config=../environments/dev/mlflow.tfbackend
+    terraform -chdir=infra/terraform/mlflow plan \
+      -var-file=../environments/dev/mlflow.tfvars \
+      -out=/tmp/online-shoppers-mlflow.tfplan
+    terraform -chdir=infra/terraform/mlflow apply \
+      /tmp/online-shoppers-mlflow.tfplan
+
+El `user_data` clona la revisión indicada, construye dos contenedores —MLflow y la campaña—,
+descarga el objeto DVC exacto y ejecuta el perfil `full`. Consulte URL, instancia y logs así:
+
+    MLFLOW_INSTANCE_ID=$(terraform -chdir=infra/terraform/mlflow output -raw instance_id)
+    MLFLOW_BUCKET=$(terraform -chdir=infra/terraform/mlflow output -raw artifact_bucket_name)
+    MLFLOW_URL=$(terraform -chdir=infra/terraform/mlflow output -raw mlflow_url)
+    aws ec2 wait instance-status-ok --instance-ids "$MLFLOW_INSTANCE_ID"
+    printf 'MLflow: %s\nEC2: %s\n' "$MLFLOW_URL" "$MLFLOW_INSTANCE_ID"
+    aws ssm start-session \
+      --target "$MLFLOW_INSTANCE_ID" \
+      --document-name AWS-StartInteractiveCommand \
+      --parameters 'command=["sudo tail -f /var/log/online-shoppers-bootstrap.log"]'
+
+El comando SSM anterior requiere el Session Manager plugin. En otra terminal, verifique el estado
+publicado en S3; reemplace `<git-ref>` por el mismo valor de `git_ref`:
+
+    aws s3 cp \
+      "s3://$MLFLOW_BUCKET/campaign-output/<git-ref>/status" -
+
+La salida debe ser `success`. MLflow queda disponible en `$MLFLOW_URL` mientras la instancia está
+encendida y sólo desde el CIDR configurado.
+
+El bootstrap ejecuta la campaña cuando se crea una EC2 nueva. Reiniciar una instancia existente
+sólo recupera su MLflow; cambiar `git_ref` en el mismo state no vuelve a ejecutar `cloud-init`. Para
+otra campaña aislada use un backend key, `environment` y bucket de artifacts nuevos, o ejecute el
+contenedor de experimentación de forma explícita mediante SSM.
+
+### 7. Recuperar y promover el champion
+
+Descargue los resultados con el mismo prefijo de la campaña y valide que no hubo fallos:
+
+    CAMPAIGN_DIR=/tmp/online-shoppers-campaign
+    mkdir -p "$CAMPAIGN_DIR"
+    aws s3 sync \
+      "s3://$MLFLOW_BUCKET/campaign-output/<git-ref>/" \
+      "$CAMPAIGN_DIR/"
+    test "$(tr -d '\n' < "$CAMPAIGN_DIR/status")" = success
+    python - <<'PY'
+    import json
+    from pathlib import Path
+
+    comparison = json.loads(
+        Path("/tmp/online-shoppers-campaign/reports/experiments/final_model_comparison.json")
+        .read_text(encoding="utf-8")
+    )
+    assert len(comparison["candidates"]) == 66
+    assert comparison["failures"] == []
+    print(comparison["champion"])
+    PY
+
+Promueva juntos el binario y sus documentos de trazabilidad:
+
+    cp "$CAMPAIGN_DIR/models/champion.joblib" models/champion.joblib
+    cp "$CAMPAIGN_DIR/models/model_metadata.json" models/model_metadata.json
+    cp "$CAMPAIGN_DIR/reports/model_metrics.json" reports/model_metrics.json
+    cp "$CAMPAIGN_DIR/reports/experiments/final_model_comparison.json" \
+      reports/experiments/final_model_comparison.json
+    cp "$CAMPAIGN_DIR/reports/experiments/protocol_manifest.json" \
+      reports/experiments/protocol_manifest.json
+    uv run dvc add models/champion.joblib
+    uv run dvc push models/champion.joblib.dvc
+    uv run pytest -q
+
+Confirme el checksum del artefacto antes de desplegar:
+
+    python - <<'PY'
+    import hashlib
+    import json
+    from pathlib import Path
+
+    artifact = Path("models/champion.joblib")
+    metadata = json.loads(Path("models/model_metadata.json").read_text(encoding="utf-8"))
+    assert hashlib.sha256(artifact.read_bytes()).hexdigest() == metadata["sha256"]
+    print(metadata["champion"], metadata["mlflow_run_id"])
+    PY
+
+Versione juntos el pointer y los documentos de trazabilidad —nunca el joblib— y fusione el PR
+validado antes de desplegar desde `main`:
+
+    git add \
+      models/champion.joblib.dvc \
+      models/model_metadata.json \
+      reports/model_metrics.json \
+      reports/experiments/final_model_comparison.json \
+      reports/experiments/protocol_manifest.json
+    git commit -m "feat(model): promote EC2 MLflow champion"
+    git push
+
+Detenga la instancia cuando termine de consultar MLflow. EBS y S3 conservan los runs:
+
+    aws ec2 stop-instances --instance-ids "$MLFLOW_INSTANCE_ID"
+    aws ec2 wait instance-stopped --instance-ids "$MLFLOW_INSTANCE_ID"
+    terraform -chdir=infra/terraform/mlflow apply -refresh-only -auto-approve \
+      -var-file=../environments/dev/mlflow.tfvars
+
+### 8. Configurar GitHub Actions
 
 Autentique GitHub CLI y guarde las credenciales AWS temporales como repository
 secrets. Los comandos solicitan el valor de forma interactiva y no deben recibir
@@ -181,10 +356,14 @@ Use como `ALLOWED_ORIGIN` el dominio real del frontend cuando esté disponible.
 El workflow valida la cuenta AWS esperada y reutiliza `LabRole`; nunca crea ni
 modifica IAM.
 
-### 7. Desplegar Lambda y API Gateway
+### 9. Desplegar Lambda y API Gateway
 
 El workflow realiza `dvc pull`, pruebas, build `linux/amd64`, push a ECR,
 resolución del digest, `terraform apply` y smoke test. Desde `main`:
+
+> [!NOTE]
+> El workflow versionado valida la cuenta AWS Academy `712986489191`. Para replicarlo en otra
+> cuenta, cambie `allowed-account-ids` y todos los nombres/ARN configurados antes de ejecutarlo.
 
     gh workflow run deploy-api.yml --ref main
     RUN_ID=$(gh run list --workflow deploy-api.yml --limit 1 \
@@ -202,10 +381,47 @@ en ECR. Para comprobar la API sin leer el estado Terraform local:
     curl --fail --retry 5 --retry-delay 5 "$API_URL/health"
     curl --fail "$API_URL/v1/model/metadata"
 
+Pruebe inferencia con el payload completo de la sección
+[Generar una predicción mediante la API](#generar-una-predicción-mediante-la-api), sustituyendo
+`http://localhost:8000` por `$API_URL`.
+
+### 10. Desplegar el frontend en Vercel
+
+Importe el repositorio desde Vercel después de fusionar la rama validada en `main` y configure:
+
+| Campo | Valor |
+| --- | --- |
+| Framework Preset | `Next.js` |
+| Root Directory | `web` |
+| Install Command | `pnpm install --frozen-lockfile` |
+| Build Command | `pnpm build` |
+| Output Directory | `.next` |
+| Variable | `NEXT_PUBLIC_API_BASE_URL=https://<api-id>.execute-api.us-east-1.amazonaws.com` |
+
+No importe en Vercel las variables del `.env.example` raíz ni credenciales AWS. Después del primer
+deployment, copie su origen exacto —por ejemplo `https://mi-proyecto.vercel.app`, sin `/` final—,
+actualice CORS y vuelva a ejecutar el workflow:
+
+    gh variable set ALLOWED_ORIGIN --body https://<proyecto>.vercel.app
+    gh workflow run deploy-api.yml --ref main
+
+Verifique el enlace completo:
+
+    curl --fail "$API_URL/health"
+    curl --fail \
+      -X OPTIONS "$API_URL/v1/predict" \
+      -H 'Origin: https://<proyecto>.vercel.app' \
+      -H 'Access-Control-Request-Method: POST' \
+      -H 'Access-Control-Request-Headers: content-type' \
+      -D - -o /dev/null
+
+Abra el dominio Vercel, confirme que aparezcan el nombre del champion, los IDs de MLflow, PR-AUC
+y umbral, y envíe una predicción real.
+
 ### Actualizaciones posteriores
 
 Para un cambio de código o de modelo, publique el commit —incluido el puntero
-`.dvc` actualizado cuando corresponda— y vuelva a ejecutar el paso 7. Terraform
+`.dvc` actualizado cuando corresponda— y vuelva a ejecutar el paso 9. Terraform
 actualiza `image_uri` en la Lambda existente; no recrea API Gateway. Cuando
 expire o se reinicie AWS Academy, renueve los tres repository secrets antes de
 lanzar el workflow. En una cuenta permanente se recomienda OIDC.
@@ -260,8 +476,9 @@ Al terminar deben existir juntos:
 - `models/champion.joblib`;
 - `models/model_metadata.json`.
 
-El notebook también genera las métricas y el registro MLflow local. Si desea
-ejecutar primero el análisis exploratorio, use:
+Ese notebook genera un baseline y registro MLflow locales para desarrollo; no reproduce ni
+reemplaza el champion de la campaña EC2 `full`. Si desea ejecutar primero el análisis exploratorio,
+use:
 
     uv run jupyter nbconvert \
       --to notebook \
@@ -371,22 +588,31 @@ Consulte la [guía completa de la API](docs/api-guide.md) para conocer todas las
 
 Para el flujo local sin AWS, descargue el CSV desde UCI y ejecute los notebooks
 como se indica en el paso 1 de **Inicio local**. Con credenciales AWS
-autorizadas, use `dvc pull` para recuperar los objetos del remoto. Para explorar
-las corridas generadas por el entrenamiento:
+autorizadas, use `dvc pull` para recuperar los objetos del remoto. El perfil smoke puede validar
+el orquestador en una base MLflow local sin ejecutar la campaña completa:
 
+    uv run python -m online_shoppers experiment \
+      --profile smoke \
+      --tracking-uri sqlite:///mlflow.db \
+      --data-path data/raw/online_shoppers_intention.csv \
+      --output-root /tmp/online-shoppers-smoke
     uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
 
-El modelo se elige por F1 en validación, según la decisión confirmada para este prototipo. El test se reserva para una única evaluación final.
+El perfil `full` exige un tracking URI HTTP y está diseñado para EC2. Selecciona por PR-AUC promedio
+en cinco folds group-aware, calcula el umbral por F1 OOF y consulta el audit set una sola vez después
+de declarar el champion.
 
 ## Validación
 
-    uv run ruff format --check src tests
-    uv run ruff check src tests
+    uv run ruff format --check src tests notebook/online-shoppers-ec2-large.ipynb
+    uv run ruff check src tests notebook/online-shoppers-ec2-large.ipynb
     uv run mypy src tests
     uv run pytest -q
     pnpm --dir web lint
     pnpm --dir web typecheck
     pnpm --dir web test
+    pnpm --dir web build
+    terraform fmt -check -recursive infra/terraform
 
 Consulte docs/installation-guide.md para instalación completa y docs/user-guide.md para uso.
 

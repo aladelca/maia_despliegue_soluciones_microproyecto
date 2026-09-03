@@ -10,6 +10,7 @@
 - [x] Lambda y API Gateway con /health y /v1/predict exitosos.
 - [x] CloudWatch sin errores durante el smoke test.
 - [x] Deployment Vercel y flujo browser -> API.
-- [ ] Manuales y video final de máximo 10 minutos.
+- [x] README, manual de instalación, experimentación, despliegue, API y usuario actualizados.
+- [ ] Video final de máximo 10 minutos.
 
 Las capturas no deben mostrar account IDs innecesarios, claves, tokens, cookies ni contenido del state.

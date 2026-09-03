@@ -3,15 +3,18 @@
 ## Resultado desplegado
 
 - API Gateway: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>
-- Frontend Vercel: <https://temporary-quick-indigo-ntrfzf9.vercel.app>
+- Frontend Vercel temporal usado en la validación (expirado):
+  <https://temporary-quick-indigo-ntrfzf9.vercel.app>
 - Pull request: <https://github.com/aladelca/maia_despliegue_soluciones_microproyecto/pull/6>
 - Lambda: `online-shoppers-ml-dev-api`
 - Imagen ECR inmutable: `sha256:6c7fcdd5b57655951e82cea1f9d5df9b4e5435a649b78f96841a0157830a8044`
 - Commit ejecutado por la campaña: `cb1a3433c1b509c695147cd56c81d325e77ca436`
 - Dataset DVC: `md5:cc6ec1db03b4f10f8de52c56ff48b085`
 
-El deployment de Vercel se creó en modo temporal y fue validado extremo a extremo. Debe reclamarse
-desde la cuenta del equipo para conservarlo después de la ventana temporal del preview.
+El deployment de Vercel se creó en modo temporal y fue validado extremo a extremo. Su expiración
+posterior no invalida la evidencia, pero no es el URL operativo. Para crear el deployment
+persistente se debe importar `main` con Root Directory `web`, preset Next.js y
+`NEXT_PUBLIC_API_BASE_URL` apuntando a API Gateway; luego se actualiza CORS con el dominio nuevo.
 
 ## Campaña EC2 y MLflow
 
@@ -43,7 +46,7 @@ Al reiniciarla, Terraform conserva el backend y MLflow vuelve a exponer los mism
 ## Validaciones ejecutadas
 
 - `58` tests Python aprobados; Ruff del alcance nuevo y mypy sin hallazgos.
-- `6` tests web aprobados; ESLint, TypeScript y build de producción aprobados.
+- `7` tests web aprobados; ESLint, TypeScript y build de producción aprobados.
 - Notebook canónico ejecutado con `nbconvert` sobre los resultados reales.
 - Terraform MLflow y service validados; los applies fueron sólo adiciones o actualizaciones in-place,
   sin destrucciones.
@@ -57,6 +60,7 @@ Al reiniciarla, Terraform conserva el backend y MLflow vuelve a exponer los mism
 - `mlflow-ec2-running.png`: campaña remota con parámetros de protocolo y child runs.
 - `mlflow-ec2-champion.png`: métricas, tags, run ID y modelo del champion.
 - `mlflow-model-registry.png`: versión `1` con alias `champion`.
-- `vercel-api-prediction.png`: metadata de MLflow y predicción real servidas desde AWS.
+- `vercel-api-prediction.png`: evidencia histórica de metadata MLflow y una predicción real
+  servidas desde AWS antes de expirar el preview temporal.
 
 Las capturas y este documento no contienen claves, tokens, cookies ni contenido de Terraform state.
