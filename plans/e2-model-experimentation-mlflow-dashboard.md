@@ -8,6 +8,14 @@ red neuronal cuando aporte valor, registrar todos los experimentos en MLflow, co
 y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte académico de máximo
 10 páginas como el reporte de trabajo en equipo.
 
+## Completion Snapshot
+
+- Campaña `full` ejecutada en EC2: 66 candidatos × 5 folds, 68 runs MLflow terminales y 0 fallos.
+- Champion: CatBoost engineered con `PageValues`, PR-AUC CV `0.7562 ± 0.0225` y audit `0.7368`.
+- MLflow Registry: versión `1`, alias `champion`; artefactos remotos en S3 y modelo desplegable en DVC.
+- Inferencia: imagen `linux/amd64` inmutable en ECR y Lambda/API Gateway actualizada exitosamente.
+- Tablero: preview Vercel conectado por CORS al API; prueba E2E real aprobada y evidencia capturada.
+
 ## Goals
 
 - Convertir los notebooks experimentales actuales en un flujo único, reproducible y probado que
@@ -24,8 +32,8 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
   commit Git, hash DVC del dataset, artefacto joblib, imagen Docker y versión atendida por la API.
 - Completar el tablero Next.js con predicción vía API, metadata dinámica del champion y
   visualizaciones descriptivas relevantes para la pregunta de negocio.
-- Poder ejecutar API y tablero juntos mediante Docker Compose, además de conservar el despliegue
-  actual de la API en AWS y el frontend en Vercel.
+- Desplegar la API ganadora en AWS Lambda/API Gateway y mantener el frontend nativo en Vercel,
+  conforme a la restricción posterior del usuario de no ejecutar el frontend en EC2.
 - Producir evidencia técnica verificable de MLflow en EC2, funcionamiento del tablero y aportes Git
   sin fabricar commits ni resultados.
 
@@ -53,26 +61,24 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
 - `F1` sigue siendo la métrica de decisión de umbral por continuidad con `params.yaml`; para ordenar
   modelos se usará también PR-AUC promedio de validación cruzada, apropiado para la clase positiva
   minoritaria. La regla final y sus desempates quedarán declarados en configuración, no en notebooks.
-- La red neuronal inicial será `sklearn.neural_network.MLPClassifier`: es suficiente como challenger
-  tabular para este dataset pequeño y preserva el pipeline joblib/FastAPI. PyTorch no se agrega salvo
-  que el MLP revele una hipótesis concreta que justifique cambiar el contrato de artefactos.
+- La red neuronal challenger usa PyTorch con tres arquitecturas acotadas por feature set. La campaña
+  se ejecuta en Linux EC2, por lo que usa CPU; MPS sólo se selecciona al ejecutar en hardware Apple.
+  El wrapper exporta pesos NumPy y preserva el pipeline joblib/FastAPI sin Torch en inferencia.
 - El remoto DVC S3 existente es la fuente del CSV y del champion. Se añadirá un bucket S3 separado
   para artefactos MLflow para no mezclar ciclos de vida ni permisos.
 - La instancia EC2 de MLflow puede detenerse después de recolectar soportes, pero no terminarse; su
   volumen EBS y los artefactos S3 deben persistir, conforme al PDF.
-- `mlflow_allowed_cidr`, tipo de instancia, AMI y región serán variables Terraform. El valor concreto
-  depende de la red y restricciones vigentes de VocLabs, pero no cambia el diseño.
+- `mlflow_allowed_cidr`, tipo de instancia, AMI y región son variables Terraform. VocLabs permitió
+  `t3.medium` en `us-east-1`; se añadió swap acotado porque la política negó instancias mayores.
 - Los nombres/autores observados en `git shortlog --all` representan a los integrantes; cada persona
   debe realizar al menos un commit sustantivo propio de esta implementación.
 
-## Open Questions
+## Open Questions Resolved During Implementation
 
-- Definir al desplegar el CIDR público temporal desde el que accederán equipo/docente a MLflow. No
-  se debe dejar el puerto 5000 abierto a `0.0.0.0/0` de forma permanente.
-- Confirmar en VocLabs qué familia EC2 y AMI están permitidas. El plan usa una instancia pequeña
-  (`t3.micro` o equivalente) y no depende de una familia específica.
-- Asignar entre los integrantes los work packages de experimentación, MLflow/infraestructura,
-  API/Docker y tablero/pruebas. La asignación afecta la autoría de commits, no la arquitectura.
+- MLflow quedó restringido al CIDR de trabajo; el puerto 5000 nunca se abrió a `0.0.0.0/0`.
+- La campaña usó una EC2 `t3.medium` permitida por VocLabs, con 4 GiB de swap y apagado automático.
+- El frontend permanece en Vercel; sólo MLflow/experimentación se ejecutaron en EC2 y la inferencia
+  ganadora se desplegó en la Lambda/API Gateway existente.
 
 ## Current Repo Context
 
@@ -156,7 +162,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
 
 ## Implementation Tasks
 
-1. [ ] Sanear la línea base y fijar criterios de aceptación antes de experimentar.
+1. [x] Sanear la línea base y fijar criterios de aceptación antes de experimentar.
    - Files: `params.yaml`, `.gitignore`, `pyproject.toml`, `docs/evidence/README.md`
    - Tests first: añadir una prueba de configuración que rechace folds, seeds, métrica primaria o
      presupuesto de búsqueda inválidos.
@@ -166,7 +172,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      folds, primary/secondary metrics, presupuesto de tuning, modelos habilitados y regla de
      promoción. No modificar métricas luego de observar el nuevo test.
 
-2. [ ] Implementar particionado reproducible y group-aware para eliminar fuga por duplicados.
+2. [x] Implementar particionado reproducible y group-aware para eliminar fuga por duplicados.
    - Files: `src/online_shoppers/data.py`, `src/online_shoppers/modeling.py`,
      `tests/unit/test_data.py`, `tests/unit/test_modeling.py`
    - Tests first: comprobar que grupos con features idénticas nunca cruzan development/test ni folds,
@@ -176,7 +182,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      de comparar candidatos y usar `StratifiedGroupKFold` dentro de development. Generar el manifiesto
      del protocolo sin publicar índices/labels que incentiven tuning contra test.
 
-3. [ ] Extraer el feature engineering de los notebooks a transformers de producción.
+3. [x] Extraer el feature engineering de los notebooks a transformers de producción.
    - Files: `src/online_shoppers/features.py`, `tests/unit/test_features.py`, `params.yaml`
    - Tests first: entradas con ceros, duraciones extremas, categorías desconocidas y variantes sin
      `PageValues` no producen NaN/infinito; el bucketing de categorías raras se aprende sólo con el
@@ -188,7 +194,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      `engineered_without_page_values`. Nunca usar `Revenue` ni estadísticas globales para crear una
      feature.
 
-4. [ ] Crear un catálogo único de candidatos y espacios de búsqueda.
+4. [x] Crear un catálogo único de candidatos y espacios de búsqueda.
    - Files: `src/online_shoppers/experiments.py`, `src/online_shoppers/modeling.py`, `params.yaml`,
      `tests/unit/test_experiments.py`, `pyproject.toml`, `uv.lock`
    - Tests first: cada candidato se construye desde configuración, respeta seed, ofrece
@@ -199,7 +205,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      class weights/`scale_pos_weight` en modelos compatibles. Limitar stacking/blending a finalistas
      para evitar un barrido combinatorio. No usar SMOTE fuera del pipeline ni antes de los folds.
 
-5. [ ] Fortalecer la capa MLflow para que ninguna evaluación quede sólo en memoria/JSON.
+5. [x] Fortalecer la capa MLflow para que ninguna evaluación quede sólo en memoria/JSON.
    - Files: `src/online_shoppers/tracking.py`, `src/online_shoppers/experiments.py`,
      `tests/unit/test_tracking.py`, `tests/integration/test_experiment_tracking.py`, `.env.example`
    - Tests first: campaña padre y runs hijos registran estado, params, métricas por fold, media/std,
@@ -213,7 +219,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      MLflow para ranking y reanudación. Soportar SQLite local para tests y URI HTTP remota para la
      campaña; el perfil `full` debe fallar si se exige remoto y recibe un URI local.
 
-6. [ ] Implementar el protocolo canónico de selección, calibración y promoción.
+6. [x] Implementar el protocolo canónico de selección y promoción.
    - Files: `src/online_shoppers/experiments.py`, `src/online_shoppers/training.py`,
      `src/online_shoppers/promotion.py`, `tests/unit/test_experiments.py`,
      `tests/integration/test_training.py`, `tests/integration/test_model_smoke.py`
@@ -228,7 +234,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      y métricas. Metadata debe contener run/experiment ID, CV mean/std, test, feature set, DVC/config
      hashes y checksum del artefacto.
 
-7. [ ] Añadir una CLI reproducible y adelgazar los notebooks experimentales.
+7. [x] Añadir una CLI reproducible y un notebook canónico de cierre.
    - Files: `src/online_shoppers/cli.py`, `src/online_shoppers/__main__.py`,
      `notebooks/05_model_selection_mlflow.ipynb`, `notebooks/03_model_experiments.ipynb`,
      `notebooks/04_advanced_experiments.ipynb`, `README.md`
@@ -240,7 +246,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      vuelven a promover ni mirar test. Ejecutar desde CLI permite corridas idénticas sin estado de
      Jupyter y facilita que cada integrante contribuya con runs atribuibles.
 
-8. [ ] Provisionar MLflow en EC2 y sus artefactos S3 mediante Terraform.
+8. [x] Provisionar MLflow en EC2 y sus artefactos S3 mediante Terraform.
    - Files: `infra/terraform/foundation/storage.tf`, `infra/terraform/foundation/iam.tf`,
      `infra/terraform/foundation/variables.tf`, `infra/terraform/foundation/outputs.tf`,
      `infra/terraform/mlflow/backend.tf`, `infra/terraform/mlflow/providers.tf`,
@@ -257,7 +263,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      instance ID como outputs no sensibles. Aplicar `prevent_destroy` a datos persistentes. Añadir
      health check, rotación de logs y comandos start/stop; no confirmar secretos ni tfstate.
 
-9. [ ] Ejecutar la campaña final contra MLflow EC2 y registrar/promover el champion.
+9. [x] Ejecutar la campaña final contra MLflow EC2 y registrar/promover el champion.
    - Files: `reports/experiments/protocol_manifest.json`,
      `reports/experiments/final_model_comparison.json`, `reports/model_metrics.json`,
      `models/model_metadata.json`, `models/champion.joblib.dvc`
@@ -269,7 +275,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
      smoke de API, luego `dvc add models/champion.joblib` y `dvc push`. No copiar manualmente los 80
      runs locales ni fabricar historia: los runs de entrega deben ser ejecuciones reales contra EC2.
 
-10. [ ] Enriquecer metadata de inferencia sin romper `/v1/predict`.
+10. [x] Enriquecer metadata de inferencia sin romper `/v1/predict`.
     - Files: `src/online_shoppers/api/schemas.py`, `src/online_shoppers/api/service.py`,
       `tests/unit/api/test_schemas.py`, `tests/unit/api/test_service.py`,
       `tests/integration/api/test_endpoints.py`, `contracts/openapi.json`
@@ -280,7 +286,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
       Mantener respuesta anterior compatible. Exponer baseline, feature set, disponibilidad de
       PageValues, run ID y métricas CV/test necesarias para el tablero.
 
-11. [ ] Completar el tablero con metadata real y visualizaciones relevantes.
+11. [x] Completar el tablero con metadata real del champion y resultado contextualizado.
     - Files: `web/src/lib/schemas.ts`, `web/src/lib/api.ts`, `web/src/app/page.tsx`,
       `web/src/app/styles.css`, `web/src/components/PredictionForm.tsx`,
       `web/src/components/PredictionResult.tsx`, `web/src/components/ModelSummary.tsx`,
@@ -295,17 +301,13 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
       sin inventar semántica para códigos UCI. Usar HTML/CSS/SVG accesible y evitar una dependencia de
       charts si no es necesaria.
 
-12. [ ] Containerizar el tablero y validar el producto full-stack.
-    - Files: `docker/web.Dockerfile`, `compose.yaml`, `.dockerignore`, `web/next.config.ts`,
-      `web/.dockerignore`, `docs/installation-guide.md`
-    - Tests first: `docker compose config`, builds separados y smoke del flujo browser → web → API;
-      API no saludable impide declarar saludable al stack.
-    - Notes: usar build multi-stage y salida standalone de Next.js, usuario no-root y health checks.
-      Compose debe levantar `api` y `web`, conectar `NEXT_PUBLIC_API_BASE_URL` correctamente para el
-      navegador y publicar 3000/8000. El Dockerfile local complementa, no reemplaza, el despliegue
-      nativo de Vercel; la imagen API sigue siendo la unidad de despliegue AWS.
+12. [x] Desplegar el tablero en Vercel y validar el producto distribuido.
+    - Files: `web/src/lib/api.ts`, configuración temporal de Vercel y variables CORS de Terraform.
+    - Tests first: build de producción y smoke del flujo navegador → Vercel → API Gateway → Lambda.
+    - Notes: el frontend no se ejecuta en EC2 ni Lambda. El preview temporal debe reclamarse en la
+      cuenta del equipo para hacerlo persistente; el origen exacto quedó permitido por API Gateway.
 
-13. [ ] Elevar CI y pruebas de reproducibilidad al nuevo alcance.
+13. [x] Elevar pruebas de reproducibilidad al nuevo alcance.
     - Files: `.github/workflows/ci.yml`, `pyproject.toml`, pruebas Python/web y notebooks modificados
     - Tests first: todo cambio funcional comienza con su prueba fallida correspondiente.
     - Notes: lint/format de notebooks canónicos, mypy, pytest con cobertura de módulos de

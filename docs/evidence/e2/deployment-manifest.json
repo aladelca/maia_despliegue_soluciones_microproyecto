@@ -1,0 +1,38 @@
+{
+  "api": {
+    "base_url": "https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com",
+    "ecr_image_digest": "sha256:6c7fcdd5b57655951e82cea1f9d5df9b4e5435a649b78f96841a0157830a8044",
+    "lambda_function": "online-shoppers-ml-dev-api"
+  },
+  "frontend": {
+    "claim_required": true,
+    "deployment_mode": "temporary",
+    "url": "https://temporary-quick-indigo-ntrfzf9.vercel.app"
+  },
+  "mlflow": {
+    "candidate_count": 66,
+    "champion_run_id": "315cd8d316ba47a899f6ba249cc721d9",
+    "ec2_instance_id": "i-086475cc1eb969d17",
+    "experiment_id": "1",
+    "experiment_name": "online-shoppers-ec2-large-experiment",
+    "failed_candidate_count": 0,
+    "parent_run_id": "f05ac6087e2b4e7e9a5f1a842d019159",
+    "registered_model": "online-shoppers-purchase-intention",
+    "registry_alias": "champion",
+    "registry_version": "1",
+    "runner_final_state": "stopped"
+  },
+  "model": {
+    "audit_f1": 0.6635838150289017,
+    "audit_pr_auc": 0.7368047814934799,
+    "champion": "catboost__engineered_with_page_values__depth_8_lr_0.03_l2_5",
+    "cv_pr_auc_mean": 0.7562165275630438,
+    "cv_pr_auc_std": 0.022494054883811284,
+    "data_version": "md5:cc6ec1db03b4f10f8de52c56ff48b085",
+    "dvc_artifact_md5": "66c2259aa408a8a7cf07546dc64247d5",
+    "joblib_sha256": "9fbb9d174c69da5ba632498ba0b53f02382d0aa12f530bc2420241a1d39640e2",
+    "mlflow_run_id": "315cd8d316ba47a899f6ba249cc721d9",
+    "source_commit": "cb1a3433c1b509c695147cd56c81d325e77ca436",
+    "threshold": 0.5673544537449113
+  }
+}
