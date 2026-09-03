@@ -53,6 +53,31 @@ def test_health_metadata_and_prediction_contract() -> None:
     }
 
 
+def test_prediction_at_threshold_is_classified_as_purchase() -> None:
+    class ThresholdPipeline:
+        def predict_proba(self, frame: object) -> np.ndarray:
+            return np.array([[0.5, 0.5]])
+
+    threshold_service = PredictionService(
+        bundle=ModelBundle(
+            pipeline=ThresholdPipeline(),
+            feature_names=FEATURE_COLUMNS,
+            threshold=0.5,
+            schema_version=ARTIFACT_SCHEMA_VERSION,
+            model_version="api-threshold-test-v1",
+        ),
+        metadata={"champion": "threshold-test"},
+    )
+
+    with TestClient(create_app(service=threshold_service)) as client:
+        response = client.post("/v1/predict", json=valid_prediction_payload())
+
+    assert response.status_code == 200
+    assert response.json()["purchase_probability"] == 0.5
+    assert response.json()["threshold"] == 0.5
+    assert response.json()["will_purchase"] is True
+
+
 def test_prediction_returns_422_without_leaking_traceback() -> None:
     invalid = valid_prediction_payload()
     invalid["BounceRates"] = 5
