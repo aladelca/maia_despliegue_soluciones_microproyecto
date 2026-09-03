@@ -53,3 +53,16 @@ it("disables the form while the prediction is loading", async () => {
   });
   expect(await screen.findByText("Compra poco probable")).toBeInTheDocument();
 });
+
+it("constrains categorical codes to positive integers", () => {
+  render(<PredictionForm />);
+
+  for (const label of [
+    "Sistema operativo (código)",
+    "Navegador (código)",
+    "Región (código)",
+    "Fuente de tráfico (código)",
+  ]) {
+    expect(screen.getByRole("spinbutton", { name: label })).toHaveAttribute("min", "1");
+  }
+});

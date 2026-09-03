@@ -13,34 +13,37 @@ import { PredictionResult } from "./PredictionResult";
 type PredictionFormProps = {
   predict?: (features: SessionFeatures) => Promise<PredictionResponse>;
   baselineRate?: number;
+  compact?: boolean;
+  onPrediction?: (features: SessionFeatures, result: PredictionResponse) => void;
 };
 
 type NumberField = {
   name: keyof SessionFeatures;
   label: string;
   defaultValue: number;
+  min?: number;
   step?: number;
   max?: number;
 };
 
 const behaviorFields: NumberField[] = [
-  { name: "Administrative", label: "Páginas administrativas", defaultValue: 0 },
-  { name: "Administrative_Duration", label: "Duración administrativa", defaultValue: 0, step: 0.1 },
+  { name: "Administrative", label: "Páginas administrativas", defaultValue: 2 },
+  { name: "Administrative_Duration", label: "Duración administrativa (s)", defaultValue: 80, step: 0.1 },
   { name: "Informational", label: "Páginas informativas", defaultValue: 0 },
-  { name: "Informational_Duration", label: "Duración informativa", defaultValue: 0, step: 0.1 },
-  { name: "ProductRelated", label: "Páginas de producto", defaultValue: 1 },
-  { name: "ProductRelated_Duration", label: "Duración en productos", defaultValue: 0, step: 0.1 },
-  { name: "BounceRates", label: "Tasa de rebote", defaultValue: 0, step: 0.001, max: 1 },
-  { name: "ExitRates", label: "Tasa de salida", defaultValue: 0, step: 0.001, max: 1 },
+  { name: "Informational_Duration", label: "Duración informativa (s)", defaultValue: 0, step: 0.1 },
+  { name: "ProductRelated", label: "Páginas de producto", defaultValue: 18 },
+  { name: "ProductRelated_Duration", label: "Duración en productos (s)", defaultValue: 599, step: 0.1 },
+  { name: "BounceRates", label: "Tasa de rebote", defaultValue: 0.003, step: 0.001, max: 1 },
+  { name: "ExitRates", label: "Tasa de salida", defaultValue: 0.025, step: 0.001, max: 1 },
   { name: "PageValues", label: "Valor de página", defaultValue: 0, step: 0.1 },
   { name: "SpecialDay", label: "Cercanía a fecha especial", defaultValue: 0, step: 0.1, max: 1 },
 ];
 
 const categoryFields: NumberField[] = [
-  { name: "OperatingSystems", label: "Código de sistema operativo", defaultValue: 1 },
-  { name: "Browser", label: "Código de navegador", defaultValue: 1 },
-  { name: "Region", label: "Código de región", defaultValue: 1 },
-  { name: "TrafficType", label: "Código de fuente de tráfico", defaultValue: 1 },
+  { name: "OperatingSystems", label: "Sistema operativo (código)", defaultValue: 2, min: 1 },
+  { name: "Browser", label: "Navegador (código)", defaultValue: 2, min: 1 },
+  { name: "Region", label: "Región (código)", defaultValue: 3, min: 1 },
+  { name: "TrafficType", label: "Fuente de tráfico (código)", defaultValue: 2, min: 1 },
 ];
 
 function NumberInput({ field }: { field: NumberField }) {
@@ -51,7 +54,7 @@ function NumberInput({ field }: { field: NumberField }) {
         name={field.name}
         type="number"
         defaultValue={field.defaultValue}
-        min={0}
+        min={field.min ?? 0}
         max={field.max}
         step={field.step ?? 1}
         required
@@ -60,7 +63,12 @@ function NumberInput({ field }: { field: NumberField }) {
   );
 }
 
-export function PredictionForm({ predict = predictPurchase, baselineRate }: PredictionFormProps) {
+export function PredictionForm({
+  predict = predictPurchase,
+  baselineRate,
+  compact = false,
+  onPrediction,
+}: PredictionFormProps) {
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -75,7 +83,9 @@ export function PredictionForm({ predict = predictPurchase, baselineRate }: Pred
         ...Object.fromEntries(form.entries()),
         Weekend: form.get("Weekend") === "true",
       });
-      setResult(await predict(parsed));
+      const prediction = await predict(parsed);
+      setResult(prediction);
+      onPrediction?.(parsed, prediction);
     } catch {
       setResult(null);
       setError("No fue posible obtener la predicción. Revise los valores e intente nuevamente.");
@@ -85,7 +95,7 @@ export function PredictionForm({ predict = predictPurchase, baselineRate }: Pred
   }
 
   return (
-    <>
+    <div className={compact ? "prediction-module compact" : "prediction-module"}>
       <form className="prediction-form" onSubmit={handleSubmit}>
         <fieldset disabled={loading}>
           <legend>Comportamiento de la sesión</legend>
@@ -129,12 +139,13 @@ export function PredictionForm({ predict = predictPurchase, baselineRate }: Pred
         </fieldset>
 
         <button className="primary-button" type="submit" disabled={loading}>
+          <span aria-hidden="true">▶</span>
           {loading ? "Calculando…" : "Predecir compra"}
         </button>
       </form>
 
       {error ? <p role="alert" className="error-message">{error}</p> : null}
       {result ? <PredictionResult baselineRate={baselineRate} result={result} /> : null}
-    </>
+    </div>
   );
 }

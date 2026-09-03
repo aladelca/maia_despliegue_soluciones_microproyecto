@@ -27,7 +27,9 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 - Registro del ganador en MLflow Model Registry como
   `online-shoppers-purchase-intention`, versión `1`, alias `champion`.
 - Promoción del CatBoost ganador a DVC/S3 y despliegue por digest OCI inmutable en Lambda.
-- Endpoint `/v1/model/metadata` y tablero Next.js conectado a metadata y predicciones reales.
+- Endpoint `/v1/model/metadata` y tablero Next.js conectado a metadata y predicciones reales. El
+  dashboard incluye resumen ejecutivo, análisis descriptivo, formulario de inferencia, historial
+  local, leaderboard de experimentación y trazabilidad del proyecto.
 - Terraform para EC2/MLflow/S3, protección contra destrucción, autoapagado y acceso al puerto
   5000 restringido a un CIDR confiable.
 
@@ -47,9 +49,8 @@ Estado operativo documentado:
 
 - API Gateway/Lambda: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>.
 - EC2 de MLflow: detenida después de la campaña; EBS y S3 conservan los runs.
-- Vercel: el proyecto GitHub está conectado y el PR tiene un
-  [preview protegido](https://maia-despliegue-soluci-git-e02deb-alarconadrianc-7868s-projects.vercel.app).
-  El dominio público de producción y su CORS se completan al fusionar/desplegar `main`.
+- Vercel: [dashboard público de producción](https://maia-despliegue-soluciones-micropro.vercel.app),
+  conectado a GitHub y al API mediante CORS restringido a ese origin estable.
 
 Consulte la [arquitectura](docs/architecture.md), la
 [guía de experimentación](docs/experimentation.md), la
@@ -418,6 +419,13 @@ Verifique el enlace completo:
 
 Abra el dominio Vercel, confirme que aparezcan el nombre del champion, los IDs de MLflow, PR-AUC
 y umbral, y envíe una predicción real.
+
+El dashboard combina tres fuentes explícitas:
+
+- `reports/eda_summary.json` para KPIs y gráficas descriptivas;
+- `reports/experiments/final_model_comparison.json` para el leaderboard de candidatos;
+- `GET /v1/model/metadata` y `POST /v1/predict` para el champion y las inferencias actualmente
+  desplegadas. El historial se conserva sólo en `localStorage` del navegador.
 
 ### Actualizaciones posteriores
 

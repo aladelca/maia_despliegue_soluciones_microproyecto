@@ -1,19 +1,19 @@
 {
   "api": {
     "base_url": "https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com",
-    "cors_origin": "https://temporary-quick-indigo-ntrfzf9.vercel.app",
-    "ecr_image_digest": "sha256:6c7fcdd5b57655951e82cea1f9d5df9b4e5435a649b78f96841a0157830a8044",
+    "cors_origin": "https://maia-despliegue-soluciones-micropro.vercel.app",
+    "ecr_image_digest": "sha256:34cbdebdeb010b349098009e4f40d44d844f9380b252b91003e4fbd984ec99b9",
     "lambda_function": "online-shoppers-ml-dev-api"
   },
   "frontend": {
-    "authentication_required": true,
+    "authentication_required": false,
     "claim_required": false,
-    "current_status": "ready_protected",
-    "deployment_mode": "github_preview",
+    "current_status": "ready_public",
+    "deployment_mode": "github_production",
     "historical_e2e_status": "expired",
     "historical_e2e_url": "https://temporary-quick-indigo-ntrfzf9.vercel.app",
-    "production_status": "pending_main_deployment_and_cors",
-    "url": "https://maia-despliegue-soluci-git-e02deb-alarconadrianc-7868s-projects.vercel.app"
+    "production_status": "ready",
+    "url": "https://maia-despliegue-soluciones-micropro.vercel.app"
   },
   "mlflow": {
     "candidate_count": 66,
