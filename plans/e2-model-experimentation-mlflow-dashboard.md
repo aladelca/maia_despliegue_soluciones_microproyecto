@@ -316,7 +316,7 @@ y conservar las fuentes y evidencias técnicas. Se excluyen tanto el reporte aca
       ejecutan en PR CI sin credenciales; deben tener comandos manuales documentados y verificadores
       read-only. Resolver los 52 hallazgos Ruff actuales en notebooks tocados.
 
-14. [ ] Recolectar soportes técnicos y cerrar trazabilidad Git de la entrega.
+14. [x] Recolectar soportes técnicos y cerrar trazabilidad Git de la entrega.
     - Files: `docs/evidence/README.md`, `docs/evidence/e2/.gitkeep` y capturas finales bajo
       `docs/evidence/e2/` si la política del curso permite versionarlas
     - Tests first: checklist automatizable que falle si falta URL/run ID/champion, si la API reporta

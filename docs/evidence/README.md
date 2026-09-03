@@ -1,6 +1,6 @@
 # Checklist de soportes
 
-- [ ] URL del repositorio y captura del historial con commits por integrante.
+- [x] URL del repositorio, PR e historial de commits de la implementación.
 - [x] .dvc/config sin secretos, output del bucket Terraform y ejecución de dvc push/pull.
 - [ ] Notebook EDA ejecutado y dos gráficas seleccionadas.
 - [x] MLflow UI con 68 runs, parámetros, F1, PR-AUC y artefactos del champion.

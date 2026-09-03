@@ -34,5 +34,6 @@
     "mlflow_run_id": "315cd8d316ba47a899f6ba249cc721d9",
     "source_commit": "cb1a3433c1b509c695147cd56c81d325e77ca436",
     "threshold": 0.5673544537449113
-  }
+  },
+  "pull_request_url": "https://github.com/aladelca/maia_despliegue_soluciones_microproyecto/pull/6"
 }

@@ -4,6 +4,7 @@
 
 - API Gateway: <https://nzm0y8hoja.execute-api.us-east-1.amazonaws.com>
 - Frontend Vercel: <https://temporary-quick-indigo-ntrfzf9.vercel.app>
+- Pull request: <https://github.com/aladelca/maia_despliegue_soluciones_microproyecto/pull/6>
 - Lambda: `online-shoppers-ml-dev-api`
 - Imagen ECR inmutable: `sha256:6c7fcdd5b57655951e82cea1f9d5df9b4e5435a649b78f96841a0157830a8044`
 - Commit ejecutado por la campaña: `cb1a3433c1b509c695147cd56c81d325e77ca436`
