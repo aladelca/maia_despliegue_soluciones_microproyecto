@@ -2,15 +2,14 @@
 
 ## Propósito
 
-Este análisis amplía la exploración de la primera entrega para responder de forma explícita:
+Este documento resume el análisis exploratorio orientado a responder:
 
 > ¿Qué sesiones presentan mayor probabilidad de finalizar en una compra?
 
-El trabajo pertenece a Andrés Bautista y está implementado en
-`notebooks/09_eda_business_purchase_probability.ipynb`. El notebook conserva las tablas, las
-figuras y las conclusiones junto al código que las genera.
+El análisis está implementado en `notebooks/09_eda_business_purchase_probability.ipynb`. El
+notebook conserva las tablas, las figuras y las conclusiones junto al código que las genera.
 
-## Alcance y separación de aportes
+## Alcance
 
 El análisis se concentra en:
 
@@ -21,10 +20,6 @@ El análisis se concentra en:
 - relación de `PageValues` con la conversión;
 - perfiles descriptivos que combinan señales relevantes;
 - implicaciones para selección de métricas, transformaciones y disponibilidad de variables.
-
-No reproduce los aportes de Janer sobre duplicados, duración extrema en páginas de producto ni
-conversión por contexto tecnológico y fuente de tráfico. Esos análisis permanecen, con su propia
-autoría e historial, en los notebooks `06`, `07` y `08`.
 
 ## Hallazgos principales
 
@@ -63,11 +58,11 @@ predicción individual del modelo.
 
 ## Artefactos reproducibles
 
-- `reports/andres_eda_business_summary.json`: cifras compactas para informe o tablero.
-- `reports/figures/andres_eda_conversion_context.png`: clase objetivo, visitante, mes y fin de semana.
-- `reports/figures/andres_eda_navigation_behavior.png`: niveles de actividad de navegación.
-- `reports/figures/andres_eda_abandonment.png`: bandas de rebote y salida.
-- `reports/figures/andres_eda_page_values.png`: distribución y gradiente de `PageValues`.
+- `reports/eda_business_summary.json`: cifras compactas para informe o tablero.
+- `reports/figures/eda_business_conversion_context.png`: clase objetivo, visitante, mes y fin de semana.
+- `reports/figures/eda_business_navigation_behavior.png`: niveles de actividad de navegación.
+- `reports/figures/eda_business_abandonment.png`: bandas de rebote y salida.
+- `reports/figures/eda_business_page_values.png`: distribución y gradiente de `PageValues`.
 
 Para regenerarlos desde la raíz del repositorio:
 
@@ -78,9 +73,7 @@ uv run jupyter nbconvert \
   --inplace notebooks/09_eda_business_purchase_probability.ipynb
 ```
 
-## Texto sugerido para la Entrega 2
-
-### Cambios respecto a la primera entrega
+## Cambios respecto a la primera entrega
 
 La definición del problema, la pregunta de negocio, el alcance y el conjunto de datos se mantienen
 sin cambios. A partir de la retroalimentación de la primera entrega, se amplió el análisis
@@ -89,10 +82,3 @@ relación con la pregunta de negocio. La nueva exploración estudia el desbalanc
 objetivo, el contexto comercial, la profundidad de navegación, las señales de abandono y
 `PageValues`, e incorpora conclusiones que justifican decisiones de métricas, variables y
 validación del modelo.
-
-### Reporte de trabajo en equipo
-
-**Andrés Bautista:** ampliación del análisis exploratorio orientado a la pregunta de negocio. Se
-analizó la relación entre conversión, tipo de visitante, temporalidad, fin de semana, profundidad de
-navegación, tasas de abandono y `PageValues`; se generaron figuras y un resumen reproducible, y se
-documentaron implicaciones para el modelamiento y la disponibilidad de variables en inferencia.
