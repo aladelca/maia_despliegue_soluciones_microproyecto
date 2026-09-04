@@ -16,6 +16,9 @@ Prototipo académico para estimar si una sesión de comercio electrónico termin
 
 ## Cambios de la Entrega 2
 
+- Ampliación del EDA orientada a la pregunta de negocio: balance de `Revenue`, conversión por
+  visitante y temporalidad, profundidad de navegación, abandono y `PageValues`, con intervalos de
+  confianza, perfiles descriptivos e implicaciones para el modelamiento.
 - Feature engineering dentro del pipeline para evitar leakage: agregados de duración y páginas,
   ratios de engagement, transformaciones logarítmicas, estacionalidad, tráfico infrecuente e
   interacciones de visitante/fin de semana.
@@ -53,6 +56,7 @@ Estado operativo documentado:
   conectado a GitHub y al API mediante CORS restringido a ese origin estable.
 
 Consulte la [arquitectura](docs/architecture.md), la
+[ampliación del EDA](docs/eda-business.md), la
 [guía de experimentación](docs/experimentation.md), la
 [guía de despliegue](docs/deployment.md) y la
 [evidencia técnica](docs/evidence/e2/README.md) para el detalle.
