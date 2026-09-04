@@ -1,0 +1,55 @@
+{
+  "baseline_conversion_rate": 0.15474452554744525,
+  "conversion_by_month": {
+    "Aug": 0.17551963048498845,
+    "Dec": 0.1250723798494499,
+    "Feb": 0.016304347826086956,
+    "Jul": 0.1527777777777778,
+    "June": 0.10069444444444445,
+    "Mar": 0.10068169900367069,
+    "May": 0.10850178359096314,
+    "Nov": 0.25350233488992663,
+    "Oct": 0.20947176684881602,
+    "Sep": 0.19196428571428573
+  },
+  "conversion_by_visitor_type": {
+    "New_Visitor": 0.24911452184179456,
+    "Other": 0.18823529411764706,
+    "Returning_Visitor": 0.1393232868922377
+  },
+  "conversion_by_weekend": {
+    "Entre semana": 0.1489114352145424,
+    "Fin de semana": 0.17398884239888424
+  },
+  "page_values_positive_conversion_rate": 0.5633699633699634,
+  "purchases": 1908,
+  "question": "\u00bfQu\u00e9 sesiones presentan mayor probabilidad de finalizar en una compra?",
+  "rows": 12330,
+  "segments": {
+    "Duraci\u00f3n producto alta y ExitRates \u2264 2,5%": {
+      "conversion_rate": 0.2881091617933723,
+      "purchases": 739,
+      "sessions": 2565
+    },
+    "PageValues = 0 y ExitRates > 5%": {
+      "conversion_rate": 0.01755669348939283,
+      "purchases": 48,
+      "sessions": 2734
+    },
+    "PageValues > 0": {
+      "conversion_rate": 0.5633699633699634,
+      "purchases": 1538,
+      "sessions": 2730
+    },
+    "PageValues > 0 y ExitRates \u2264 2,5%": {
+      "conversion_rate": 0.6125680356259278,
+      "purchases": 1238,
+      "sessions": 2021
+    },
+    "Todas las sesiones": {
+      "conversion_rate": 0.15474452554744525,
+      "purchases": 1908,
+      "sessions": 12330
+    }
+  }
+}
